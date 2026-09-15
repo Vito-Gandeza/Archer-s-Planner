@@ -84,6 +84,18 @@ function classify(assignment) {
   return "assignment";
 }
 
+/**
+ * Canvas's Roll Call tool plants a "Roll Call Attendance" assignment in every
+ * course that uses it. It is the instructor's attendance register — worth 100
+ * points, never due, never submitted by the student — and it was the only row
+ * three of these courses contributed. The launch URL is the reliable tell; the
+ * name is localised and editable.
+ */
+function isAttendanceTool(assignment) {
+  const url = assignment?.external_tool_tag_attributes?.url ?? "";
+  return /rollcall/i.test(url) || /^https?:\/\/rollcall[.-]/i.test(url);
+}
+
 function statusOf(assignment) {
   const s = assignment.submission;
   if (!s) return "open";
@@ -143,7 +155,7 @@ async function collect() {
 
     const wantedFileIds = new Map(); // canvas_file_id -> canvas_assignment_id
     for (const a of assignments) {
-      if (!a?.id) continue;
+      if (!a?.id || isAttendanceTool(a)) continue;
       payload.deadlines.push({
         canvas_course_id: String(course.id),
         canvas_assignment_id: String(a.id),
