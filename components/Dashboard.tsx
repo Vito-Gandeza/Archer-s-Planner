@@ -17,6 +17,7 @@ import {
   weekStart,
   classNow,
   formatTime,
+  triage,
   toMinutes,
   DAY_MS,
 } from "@/lib/planner.mjs";
@@ -82,15 +83,16 @@ export default function Dashboard({ fixture }: { fixture?: PlannerSnapshot }) {
 
   const open = deadlines.filter((d) => d.status === "open");
   const dated = open.filter((d) => d.due_at);
-  const overdue = dated.filter((d) => deadlineState(d, now) === "overdue");
+  // Months-old leftovers get their own section instead of owning the hero.
+  const { stale: longOverdue, overdue } = triage(deadlines, now) as { stale: Deadline[]; overdue: Deadline[] };
   const dueToday = dated.filter((d) => deadlineState(d, now) === "today");
   const horizon = new Date(now.getTime() + 7 * DAY_MS);
   const nextSeven = dated
     .filter((d) => new Date(d.due_at!) >= now && new Date(d.due_at!) <= horizon)
     .sort((a, b) => a.due_at!.localeCompare(b.due_at!));
 
-  // Overdue first — the thing you are most likely to have forgotten.
-  const queue = [...overdue.sort((a, b) => b.due_at!.localeCompare(a.due_at!)), ...nextSeven];
+  // Recently overdue first — the thing you are most likely to have forgotten.
+  const queue = [...overdue, ...nextSeven];
   const hero = queue[0] ?? null;
   const rest = queue.slice(1, 9);
   const undated = open.filter((d) => !d.due_at);
@@ -142,7 +144,12 @@ export default function Dashboard({ fixture }: { fixture?: PlannerSnapshot }) {
 
       <section className="stats">
         <Stat i={0} k="Due today" v={dueToday.length} sub={dueToday.length ? "finish these" : "nothing today"} accent={dueToday.length > 0} />
-        <Stat i={1} k="Overdue" v={overdue.length} sub={overdue.length ? "still open" : "all clear"} />
+        <Stat
+          i={1}
+          k="Overdue"
+          v={overdue.length}
+          sub={longOverdue.length ? `${longOverdue.length} long overdue` : overdue.length ? "still open" : "all clear"}
+        />
         <Stat i={2} k="Next 7 days" v={nextSeven.length} sub={`${undated.length} with no date`} />
         <Stat i={3} k="Points at stake" v={Math.round(pointsAtStake(nextSeven))} sub="this week's deadlines" />
       </section>
@@ -254,6 +261,29 @@ export default function Dashboard({ fixture }: { fixture?: PlannerSnapshot }) {
                 <div className="hatchbox">Queue is clear</div>
               )}
             </section>
+
+            {longOverdue.length > 0 && (
+              <section className="panel rise" style={{ ["--i" as string]: 5 }}>
+                <PanelHead title="Long overdue" count={`${longOverdue.length} · over a month past due`} />
+                <div className="tasks">
+                  {longOverdue.slice(0, 6).map((d, i) => (
+                    <TaskRow
+                      key={d.id}
+                      d={d}
+                      course={courseOf.get(d.course_id)}
+                      now={now}
+                      i={i}
+                      onOpen={() => setSelected(d)}
+                      onTick={() => toggleDone(d)}
+                    />
+                  ))}
+                </div>
+                <p className="note">
+                  Nothing here is going to get done today. Tick them off, or hide the course in Settings if it is an
+                  org shell rather than a class.
+                </p>
+              </section>
+            )}
 
             {undated.length > 0 && (
               <section className="panel rise" style={{ ["--i" as string]: 4 }}>
