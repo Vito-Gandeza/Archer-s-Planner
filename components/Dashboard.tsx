@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Masthead, PanelHead } from "./Chrome";
 import DeadlineDialog, { Clock } from "./DeadlineDialog";
 import { useSnapshot } from "@/lib/useSnapshot";
+import { CANVAS_ORIGIN } from "@/lib/config";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import {
   countdownParts,
@@ -18,7 +19,6 @@ import {
 } from "@/lib/planner.mjs";
 import type { Course, Deadline } from "@/lib/types";
 
-const CANVAS_ORIGIN = process.env.NEXT_PUBLIC_CANVAS_ORIGIN ?? "https://dlsu.instructure.com";
 
 /** Owns its own ticking state so a live second-hand never re-renders the page. */
 function Countdown({ dueAt }: { dueAt: string }) {

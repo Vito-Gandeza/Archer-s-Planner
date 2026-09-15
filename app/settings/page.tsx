@@ -3,9 +3,9 @@
 import { useRef, useState } from "react";
 import { Masthead } from "@/components/Chrome";
 import { useSnapshot } from "@/lib/useSnapshot";
+import { CANVAS_ORIGIN } from "@/lib/config";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
-const CANVAS_ORIGIN = process.env.NEXT_PUBLIC_CANVAS_ORIGIN ?? "https://dlsu.instructure.com";
 
 export default function Settings() {
   const { snapshot, refresh } = useSnapshot();

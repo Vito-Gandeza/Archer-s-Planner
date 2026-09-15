@@ -2,8 +2,8 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import { CANVAS_ORIGIN } from "@/lib/config";
 
-const CANVAS_ORIGIN = process.env.NEXT_PUBLIC_CANVAS_ORIGIN ?? "https://dlsu.instructure.com";
 
 const LINKS = [
   { href: "/", label: "Dashboard" },

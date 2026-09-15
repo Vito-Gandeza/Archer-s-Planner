@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { CANVAS_ORIGIN, SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/config";
 
 export const runtime = "nodejs";
 
@@ -15,7 +16,7 @@ const iso = (v: unknown) => {
 };
 
 const cors = {
-  "Access-Control-Allow-Origin": process.env.NEXT_PUBLIC_CANVAS_ORIGIN ?? "https://dlsu.instructure.com",
+  "Access-Control-Allow-Origin": CANVAS_ORIGIN,
   "Access-Control-Allow-Headers": "authorization, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
 };
@@ -87,7 +88,7 @@ export async function POST(request: Request) {
     }))
     .filter((f) => f.canvas_course_id && f.canvas_file_id);
 
-  const sb = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+  const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
