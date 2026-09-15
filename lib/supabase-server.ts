@@ -1,11 +1,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
-import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
+import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "./config";
 
 /** Request-scoped client that carries the signed-in user, so RLS applies. */
 export async function supabaseServer() {
   const store = await cookies();
-  return createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  return createServerClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     cookies: {
       getAll: () => store.getAll(),
       setAll: (list) => {

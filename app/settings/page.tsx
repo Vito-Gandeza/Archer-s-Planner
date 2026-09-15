@@ -115,7 +115,7 @@ export default function Settings() {
       <h2 className="sectionhead">3 — Read a syllabus</h2>
       <form className="card stack" onSubmit={parseSyllabus}>
         <p className="note">
-          Uploads the file to your private storage bucket, then runs it through Claude Haiku once to pull out the grade
+          Uploads the file to your private storage bucket, then runs it through Gemini once to pull out the grade
           weights. The result is cached per course — it only re-runs when you upload again.
         </p>
         <select className="field" value={courseId} onChange={(e) => setCourseId(e.target.value)}>

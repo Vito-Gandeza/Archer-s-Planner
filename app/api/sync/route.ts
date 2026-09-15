@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import { CANVAS_ORIGIN, SUPABASE_ANON_KEY, SUPABASE_URL } from "@/lib/config";
+import { CANVAS_ORIGIN, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/config";
 
 export const runtime = "nodejs";
 
@@ -30,7 +30,7 @@ export async function OPTIONS() {
  *
  * Shape is validated here; authorisation happens in Postgres. `ingest_sync` is
  * a security-definer function keyed on the sync token, so this route runs with
- * the ordinary anon key and no service-role secret exists to leak. Nothing in
+ * the ordinary publishable key and no service-role secret exists to leak. Nothing in
  * the request body can name a user — the token decides whose rows these are.
  */
 export async function POST(request: Request) {
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
     }))
     .filter((f) => f.canvas_course_id && f.canvas_file_id);
 
-  const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  const sb = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 

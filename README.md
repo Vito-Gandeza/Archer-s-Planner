@@ -69,13 +69,17 @@ cp .env.example .env.local
 
 | Variable | Notes |
 | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Project Settings → API |
-| `ANTHROPIC_API_KEY` | Server only. Used by `/api/parse-syllabus`; without it that one route returns a clear error and nothing else is affected. |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Project Settings → API. Both have committed defaults in `lib/config.ts`, so you only need these to point a clone at your own project. |
+| `GEMINI_API_KEY` | Server only, from [AI Studio](https://aistudio.google.com/apikey). Used by `/api/parse-syllabus`; without it that one route returns a clear error and nothing else is affected. |
+| `GEMINI_MODEL` | Optional. Defaults to `gemini-3.8-flash`; drop to `gemini-3.5-flash-lite` to cut cost further. |
 | `NEXT_PUBLIC_CANVAS_ORIGIN` | `https://dlsu.instructure.com`. Also the origin the sync endpoint accepts cross-origin posts from. |
 
 **There is no service-role key.** The extension's writes go through
 `ingest_sync`, a `security definer` Postgres function gated on the sync token,
-so no high-privilege secret is deployed anywhere.
+so no high-privilege secret is deployed anywhere. The Supabase URL and
+publishable key are committed in `lib/config.ts` on purpose: a publishable key
+is designed to sit in the browser bundle, RLS is what protects rows, and it can
+be rotated on its own without signing anybody out.
 
 ### 3. Run
 
@@ -109,7 +113,8 @@ AnimoSpace tab ──content.js──▶ POST /api/sync ──rpc ingest_sync─
 - **Everything else** reads through the anon key with the signed-in session, so
   RLS is what isolates one student's rows from another's.
 - **`/api/parse-syllabus`** downloads the file from the student's own storage
-  prefix, sends it to Claude Haiku once, validates the JSON that comes back, and
+  prefix, sends it to Gemini once with a response schema, validates the JSON that
+  comes back anyway, and
   writes `grade_components`. It refuses to re-run for a course that already has
   extracted components unless `force: true`, so a syllabus costs one API call.
 

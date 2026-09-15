@@ -1,33 +1,56 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// Cheapest current tier, and enough for pulling a weights table out of a syllabus.
-const MODEL = process.env.ANTHROPIC_MODEL ?? "claude-haiku-4-5-20251001";
+// Cheap, multimodal, and plenty for pulling a weights table out of a syllabus.
+// Override with GEMINI_MODEL to move up or down a tier.
+const MODEL = process.env.GEMINI_MODEL ?? "gemini-3.8-flash";
+const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 const MAX_BYTES = 8 * 1024 * 1024;
 
 const PROMPT = `You are reading a university course syllabus.
 
 Find the grade breakdown: the table or list saying how the final grade is
-weighted (e.g. "Quizzes 30%, Machine Problems 20%, Final Exam 25%").
-
-Reply with JSON only, no prose and no code fence, in exactly this shape:
-
-{"components":[{"label":"Quizzes","weight_percent":30}],"confidence":"high","note":""}
+weighted (for example "Quizzes 30%, Machine Problems 20%, Final Exam 25%").
 
 Rules:
-- weight_percent is a number, not a string, and excludes the percent sign.
-- Use the syllabus's own wording for label. Do not invent components.
-- Keep sub-items only if the parent's weight is not stated.
-- If no breakdown is present, return {"components":[],"confidence":"low","note":"<why>"}.
-- confidence is "high", "medium" or "low".`;
+- weight_percent is a number without the percent sign.
+- Use the syllabus's own wording for each label. Do not invent components.
+- Keep sub-items only when the parent's own weight is not stated.
+- If the document has no grade breakdown, return an empty components list and
+  say why in note.`;
+
+/** Gemini's structured-output schema (an OpenAPI subset). */
+const RESPONSE_SCHEMA = {
+  type: "OBJECT",
+  properties: {
+    components: {
+      type: "ARRAY",
+      items: {
+        type: "OBJECT",
+        properties: {
+          label: { type: "STRING" },
+          weight_percent: { type: "NUMBER" },
+        },
+        required: ["label", "weight_percent"],
+        propertyOrdering: ["label", "weight_percent"],
+      },
+    },
+    confidence: { type: "STRING", enum: ["high", "medium", "low"] },
+    note: { type: "STRING" },
+  },
+  required: ["components", "confidence", "note"],
+  propertyOrdering: ["components", "confidence", "note"],
+};
 
 type Extracted = { label: string; weight_percent: number };
 
-/** The model's reply is untrusted input: parse defensively before it reaches the DB. */
+/**
+ * Even with a response schema, the model's reply is untrusted input: it reaches
+ * the database only through this.
+ */
 function parseComponents(raw: string): { components: Extracted[]; confidence: string; note: string } {
   const start = raw.indexOf("{");
   const stop = raw.lastIndexOf("}");
@@ -38,9 +61,10 @@ function parseComponents(raw: string): { components: Extracted[]; confidence: st
   const components = list
     .map((c) => {
       const row = c as Record<string, unknown>;
-      const label = typeof row.label === "string" ? row.label.trim().slice(0, 120) : "";
-      const weight = Number(row.weight_percent);
-      return { label, weight_percent: weight };
+      return {
+        label: typeof row.label === "string" ? row.label.trim().slice(0, 120) : "",
+        weight_percent: Number(row.weight_percent),
+      };
     })
     .filter((c) => c.label && Number.isFinite(c.weight_percent) && c.weight_percent >= 0 && c.weight_percent <= 100)
     .slice(0, 40);
@@ -54,12 +78,15 @@ function parseComponents(raw: string): { components: Extracted[]; confidence: st
 
 /**
  * Body: { courseId, storagePath, force? }
+ *
  * `storagePath` points at the private course-files bucket; the signed-in user's
- * RLS policy is what decides whether they may read it.
+ * RLS policy is what decides whether they may read it. The API key stays
+ * server-side and never reaches the browser or the extension.
  */
 export async function POST(request: Request) {
-  if (!process.env.ANTHROPIC_API_KEY) {
-    return NextResponse.json({ error: "ANTHROPIC_API_KEY is not set on the server" }, { status: 500 });
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return NextResponse.json({ error: "GEMINI_API_KEY is not set on the server" }, { status: 500 });
   }
 
   const sb = await supabaseServer();
@@ -71,9 +98,11 @@ export async function POST(request: Request) {
     storagePath?: string;
     force?: boolean;
   };
-  if (!courseId || !storagePath) return NextResponse.json({ error: "courseId and storagePath required" }, { status: 400 });
+  if (!courseId || !storagePath) {
+    return NextResponse.json({ error: "courseId and storagePath required" }, { status: 400 });
+  }
 
-  // Parse once per course and reuse the result; re-running costs money for nothing.
+  // Parse once per course and reuse the result; re-running costs quota for nothing.
   const { data: existing } = await sb
     .from("grade_components")
     .select("id")
@@ -89,28 +118,36 @@ export async function POST(request: Request) {
 
   const bytes = Buffer.from(await blob.arrayBuffer());
   const isPdf = blob.type === "application/pdf" || storagePath.toLowerCase().endsWith(".pdf");
-  const content: Anthropic.MessageParam["content"] = isPdf
+  const parts = isPdf
     ? [
-        {
-          type: "document",
-          source: { type: "base64", media_type: "application/pdf", data: bytes.toString("base64") },
-        },
-        { type: "text", text: PROMPT },
+        { inline_data: { mime_type: "application/pdf", data: bytes.toString("base64") } },
+        { text: PROMPT },
       ]
-    : [{ type: "text", text: `${PROMPT}\n\n--- syllabus ---\n${bytes.toString("utf8").slice(0, 200_000)}` }];
+    : [{ text: `${PROMPT}\n\n--- syllabus ---\n${bytes.toString("utf8").slice(0, 200_000)}` }];
 
-  const client = new Anthropic();
-  let raw: string;
-  try {
-    const message = await client.messages.create({ model: MODEL, max_tokens: 4000, messages: [{ role: "user", content }] });
-    raw = message.content
-      .filter((b): b is Anthropic.TextBlock => b.type === "text")
-      .map((b) => b.text)
-      .join("");
-  } catch (e) {
-    if (e instanceof Anthropic.APIError) return NextResponse.json({ error: e.message }, { status: e.status ?? 502 });
-    throw e;
+  const res = await fetch(ENDPOINT, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
+    body: JSON.stringify({
+      contents: [{ parts }],
+      generationConfig: {
+        responseMimeType: "application/json",
+        responseSchema: RESPONSE_SCHEMA,
+        temperature: 0,
+      },
+    }),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text();
+    // Quota and bad-key failures are the common ones; pass the reason through.
+    return NextResponse.json({ error: `Gemini: ${detail.slice(0, 300)}` }, { status: res.status === 429 ? 429 : 502 });
   }
+
+  const body = (await res.json()) as {
+    candidates?: { content?: { parts?: { text?: string }[] } }[];
+  };
+  const raw = (body.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
 
   let result;
   try {
