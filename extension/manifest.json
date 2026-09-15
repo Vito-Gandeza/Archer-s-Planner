@@ -1,0 +1,16 @@
+{
+  "manifest_version": 3,
+  "name": "Student Planner — Canvas sync",
+  "version": "0.1.0",
+  "description": "Reads your own AnimoSpace courses, deadlines and files, and sends them to your Student Planner account.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://dlsu.instructure.com/*"],
+  "options_page": "options.html",
+  "content_scripts": [
+    {
+      "matches": ["https://dlsu.instructure.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

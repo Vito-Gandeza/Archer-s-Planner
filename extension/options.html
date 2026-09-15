@@ -1,0 +1,26 @@
+<!doctype html>
+<meta charset="utf-8" />
+<title>Student Planner — sync setup</title>
+<style>
+  body { font: 14px/1.5 system-ui, sans-serif; margin: 0; padding: 28px; max-width: 520px; color: #000; }
+  h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; margin: 0 0 4px; }
+  p.note { color: #777; font-size: 12px; margin: 0 0 20px; }
+  label { display: block; font-size: 11px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; margin: 16px 0 6px; }
+  input { width: 100%; font: inherit; padding: 8px; border: 1px solid #000; border-radius: 0; box-sizing: border-box; }
+  button { font: inherit; font-weight: 800; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; padding: 9px 14px; border: 1px solid #000; background: #000; color: #fff; cursor: pointer; margin-top: 18px; }
+  .status { margin-top: 18px; font-size: 12px; border-top: 1px solid #ddd; padding-top: 12px; color: #555; }
+  .status b { color: #000; }
+</style>
+<h1>Canvas sync</h1>
+<p class="note">Generate the token on the planner's Settings page, then paste it here once.</p>
+
+<label for="appUrl">Planner URL</label>
+<input id="appUrl" type="url" placeholder="https://your-planner.vercel.app" />
+
+<label for="syncToken">Sync token</label>
+<input id="syncToken" type="password" placeholder="csp_..." />
+
+<button id="save">Save</button>
+
+<div class="status" id="status"></div>
+<script src="options.js"></script>
