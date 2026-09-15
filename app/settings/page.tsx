@@ -94,10 +94,21 @@ export default function Settings() {
   }
 
   /**
-   * Deleting a course takes its deadlines, files, modules, grade components and
-   * schedule entries with it — the foreign keys cascade. That is the point when
-   * clearing out last year's courses, but it is not undoable, so the button
-   * arms first and says what will go.
+   * Hiding is the everyday action, and the one that actually works: a deleted
+   * course reappears on the next sync because Canvas still lists it, whereas
+   * `hidden` is never written by ingest_sync and so survives. A hidden course
+   * and everything under it drops out of every other screen.
+   */
+  async function toggleHidden(id: string, hidden: boolean) {
+    const { error } = await supabaseBrowser().from("courses").update({ hidden }).eq("id", id);
+    if (error) setMsg(error.message);
+    refresh();
+  }
+
+  /**
+   * Deleting is the rare one: it takes the course's deadlines, files, modules
+   * and grade breakdown with it, and the next sync will bring the course back
+   * anyway unless it is also out of term. Kept for real cleanup, armed first.
    */
   async function removeCourse(id: string) {
     setBusy(true);
@@ -224,15 +235,18 @@ export default function Settings() {
       <h2 className="sectionhead">Your courses</h2>
       <div className="card">
         <p className="note" style={{ marginTop: 0 }}>
-          The extension now ignores courses whose term has already ended, so old ones stop arriving — but anything
-          already synced stays until you remove it here. Removing a course also removes its deadlines, files, modules
-          and grade breakdown. It cannot be undone.
+          <b>Hide</b> is the one you want. AnimoSpace enrols you in org and admin shells alongside real classes, and
+          they come back on every sync no matter how often you delete them — hiding sticks, because a sync never
+          touches it. A hidden course and all of its deadlines, files and modules disappear from every other screen.
+          <br />
+          <br />
+          The <b>×</b> deletes permanently instead, which is only worth it for a course Canvas has stopped listing.
         </p>
         {courses.length === 0 && <div className="hatchbox">No courses synced yet</div>}
         {courses.map((c) => {
           const n = countsFor(c.id);
           return (
-            <div className="course-row" key={c.id}>
+            <div className="course-row" key={c.id} data-hidden={c.hidden}>
               <span className="code">{c.code}</span>
               <span className="nm" title={c.name}>
                 {c.name}
@@ -242,20 +256,29 @@ export default function Settings() {
                   {n.items} module item{n.items === 1 ? "" : "s"}
                 </span>
               </span>
-              {confirming === c.id ? (
-                <span className="nav">
-                  <button className="btn danger" onClick={() => removeCourse(c.id)} disabled={busy}>
-                    Delete for good
-                  </button>
-                  <button className="btn btn-ghost" onClick={() => setConfirming(null)}>
-                    Cancel
-                  </button>
-                </span>
-              ) : (
-                <button className="btn btn-ghost" onClick={() => setConfirming(c.id)}>
-                  Remove
+              <span className="nav">
+                <button
+                  className="btn btn-ghost"
+                  onClick={() => toggleHidden(c.id, !c.hidden)}
+                  title={c.hidden ? "Show this course everywhere again" : "Hide this course from every other screen"}
+                >
+                  {c.hidden ? "Show" : "Hide"}
                 </button>
-              )}
+                {confirming === c.id ? (
+                  <>
+                    <button className="btn danger" onClick={() => removeCourse(c.id)} disabled={busy}>
+                      Delete for good
+                    </button>
+                    <button className="btn btn-ghost" onClick={() => setConfirming(null)}>
+                      Cancel
+                    </button>
+                  </>
+                ) : (
+                  <button className="btn btn-ghost" onClick={() => setConfirming(c.id)} title="Delete permanently">
+                    ×
+                  </button>
+                )}
+              </span>
             </div>
           );
         })}

@@ -787,3 +787,9 @@ dialog::backdrop { background: rgb(from var(--paper) r g b / 0.72); }
   .cw-row .nm { grid-column: 1 / -1; }
   .cw-row .n:nth-child(3) { display: none; }
 }
+
+/* A hidden course stays legible but visibly struck out of the working set. */
+.course-row[data-hidden="true"] .code,
+.course-row[data-hidden="true"] .nm { text-decoration: line-through; color: var(--muted); }
+.course-row[data-hidden="true"] { opacity: 0.6; }
+.course-row[data-hidden="true"]:hover { opacity: 1; }

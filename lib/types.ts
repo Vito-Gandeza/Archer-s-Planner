@@ -6,6 +6,8 @@ export type Course = {
   instructor: string | null;
   room: string | null;
   color: string | null;
+  /** The student's own call. A sync never writes this, so it survives re-syncs. */
+  hidden: boolean;
 };
 
 export type DeadlineType = "assignment" | "quiz" | "exam" | "discussion" | "other";

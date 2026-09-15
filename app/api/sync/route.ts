@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
 import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/config";
+import { shortCode } from "@/lib/planner.mjs";
 
 export const runtime = "nodejs";
 
@@ -59,7 +60,9 @@ export async function POST(request: Request) {
   const courses = asArray(body.courses, LIMITS.courses)
     .map((c: any) => ({
       canvas_course_id: str(c?.canvas_course_id, 64),
-      code: str(c?.code, 64) ?? str(c?.name, 64),
+      // Normalised here rather than in the extension so it applies to every
+      // client version, and so a re-sync tidies rows stored by an older one.
+      code: shortCode(str(c?.code, 64) ?? str(c?.name, 64), c?.canvas_course_id),
       name: str(c?.name, 300) ?? str(c?.code, 300),
       instructor: str(c?.instructor, 120),
       room: str(c?.room, 60),

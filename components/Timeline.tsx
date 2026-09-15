@@ -14,7 +14,7 @@ import type { Deadline, PlannerSnapshot } from "@/lib/types";
  */
 export default function Timeline({ fixture }: { fixture?: PlannerSnapshot }) {
   const live = useSnapshot();
-  const snapshot = fixture ?? live.snapshot;
+  const snapshot = fixture ?? live.visible;
   const stale = fixture ? false : live.stale;
   const refresh = fixture ? () => {} : live.refresh;
   const [offset, setOffset] = useState(0);

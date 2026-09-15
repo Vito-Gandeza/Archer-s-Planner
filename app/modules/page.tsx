@@ -19,7 +19,7 @@ const TYPE_LABEL: Record<string, string> = {
 };
 
 export default function ModulesPage() {
-  const { snapshot, stale, refresh } = useSnapshot();
+  const { visible: snapshot, stale, refresh } = useSnapshot();
   const [courseId, setCourseId] = useState<string | null>(null);
   const [filesOnly, setFilesOnly] = useState(false);
 

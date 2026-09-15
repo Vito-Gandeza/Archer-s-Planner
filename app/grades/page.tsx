@@ -10,7 +10,7 @@ import type { GradeComponent } from "@/lib/types";
 const TARGETS = [95, 90, 85, 80, 75];
 
 export default function GradesPage() {
-  const { snapshot, stale, refresh } = useSnapshot();
+  const { visible: snapshot, stale, refresh } = useSnapshot();
   const [courseId, setCourseId] = useState<string | null>(null);
   const [target, setTarget] = useState(85);
   const [busy, setBusy] = useState(false);

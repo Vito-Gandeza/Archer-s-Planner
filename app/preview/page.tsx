@@ -20,11 +20,11 @@ const at = (dayOffset: number, hour: number, min = 0) =>
 
 const FIXTURE: PlannerSnapshot = {
   courses: [
-    { id: "c1", canvas_course_id: "1", code: "MICPROS", name: "Microprocessors", instructor: "F. Dimaculangan", room: "A705", color: null },
-    { id: "c2", canvas_course_id: "2", code: "DIGDACM", name: "Data & Digital Communications", instructor: "G. Arada", room: "G207", color: null },
-    { id: "c3", canvas_course_id: "3", code: "LBYCPB3", name: "CpE Drafting & Design Laboratory", instructor: "M. Padilla", room: "V310", color: null },
-    { id: "c4", canvas_course_id: "4", code: "NUMMETS", name: "Numerical Methods", instructor: "S. Magon", room: "V308", color: null },
-    { id: "c5", canvas_course_id: "5", code: "ECNOMIC", name: "Engineering Economy", instructor: "H. Verano", room: "A705", color: null },
+    { id: "c1", canvas_course_id: "1", code: "MICPROS", name: "Microprocessors", instructor: "F. Dimaculangan", room: "A705", color: null , hidden: false },
+    { id: "c2", canvas_course_id: "2", code: "DIGDACM", name: "Data & Digital Communications", instructor: "G. Arada", room: "G207", color: null , hidden: false },
+    { id: "c3", canvas_course_id: "3", code: "LBYCPB3", name: "CpE Drafting & Design Laboratory", instructor: "M. Padilla", room: "V310", color: null , hidden: false },
+    { id: "c4", canvas_course_id: "4", code: "NUMMETS", name: "Numerical Methods", instructor: "S. Magon", room: "V308", color: null , hidden: false },
+    { id: "c5", canvas_course_id: "5", code: "ECNOMIC", name: "Engineering Economy", instructor: "H. Verano", room: "A705", color: null , hidden: false },
   ],
   deadlines: [
     { id: "d1", course_id: "c3", canvas_assignment_id: "1", title: "Plate 4 — isometric assembly drawing", due_at: at(0, 11, 0), type: "assignment", points_possible: 100, canvas_url: null, status: "open" },

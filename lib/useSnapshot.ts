@@ -1,10 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import type { ClassMeeting, Course, CourseFile, Deadline, Module, ModuleItem, PlannerSnapshot } from "@/lib/types";
 
-const CACHE_KEY = "planner.snapshot.v2";
+const CACHE_KEY = "planner.snapshot.v3";
 
 /**
  * ponytail: the offline copy is a single localStorage blob rather than an
@@ -48,9 +48,37 @@ export async function loadSnapshot(): Promise<PlannerSnapshot> {
 }
 
 /**
+ * Everything belonging to a hidden course, dropped in one place.
+ *
+ * Hiding has to reach further than the course row: a hidden course's deadlines,
+ * files and modules would otherwise keep showing up in the queue and on the
+ * timeline, which is the whole thing the student was trying to get rid of.
+ */
+function withoutHidden(s: PlannerSnapshot): PlannerSnapshot {
+  const courses = s.courses.filter((c) => !c.hidden);
+  const live = new Set(courses.map((c) => c.id));
+  const mine = <T extends { course_id: string }>(rows: T[]) => rows.filter((r) => live.has(r.course_id));
+  return {
+    ...s,
+    courses,
+    deadlines: mine(s.deadlines),
+    files: mine(s.files),
+    components: mine(s.components),
+    grades: mine(s.grades),
+    modules: mine(s.modules),
+    moduleItems: mine(s.moduleItems),
+    meetings: mine(s.meetings),
+  };
+}
+
+/**
  * Loads from the cache first so the page paints instantly and offline, then
  * refreshes from Supabase. `stale` is true while what is on screen came from
  * the cache rather than the network.
+ *
+ * `visible` is the working set with hidden courses stripped — what almost every
+ * screen wants. `snapshot` is everything, for the settings screen that has to
+ * list the hidden ones in order to unhide them.
  */
 export function useSnapshot() {
   const [snapshot, setSnapshot] = useState<PlannerSnapshot | null>(null);
@@ -100,5 +128,7 @@ export function useSnapshot() {
     };
   }, [refresh]);
 
-  return { snapshot, stale, error, loading, refresh };
+  const visible = useMemo(() => (snapshot ? withoutHidden(snapshot) : null), [snapshot]);
+
+  return { snapshot, visible, stale, error, loading, refresh };
 }

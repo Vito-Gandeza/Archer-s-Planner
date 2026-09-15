@@ -121,8 +121,9 @@ async function collect() {
     if (!course?.id || course.access_restricted_by_date) continue;
     payload.courses.push({
       canvas_course_id: String(course.id),
-      // DLSU course names look like "MICPROS - Microprocessors"; course_code is the short one.
-      code: (course.course_code ?? course.name ?? "").split(/\s|-/)[0].slice(0, 32) || String(course.id),
+      // Sent raw; the planner trims the section suffix ("MICPROS_E25" -> "MICPROS")
+      // so every client version ends up with the same codes.
+      code: course.course_code ?? course.name ?? String(course.id),
       name: course.name ?? course.course_code ?? "Course",
       instructor: course.teachers?.[0]?.display_name ?? null,
     });

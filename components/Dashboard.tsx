@@ -58,7 +58,7 @@ function Countdown({ dueAt }: { dueAt: string }) {
  */
 export default function Dashboard({ fixture }: { fixture?: PlannerSnapshot }) {
   const live = useSnapshot();
-  const snapshot = fixture ?? live.snapshot;
+  const snapshot = fixture ?? live.visible;
   const stale = fixture ? false : live.stale;
   const error = fixture ? null : live.error;
   const loading = fixture ? false : live.loading;

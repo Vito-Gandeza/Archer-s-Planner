@@ -14,7 +14,7 @@ const MODES = ["lecture", "laboratory", "online"] as const;
 const toInput = (t: string) => t.slice(0, 5);
 
 export default function SchedulePage() {
-  const { snapshot, stale, refresh } = useSnapshot();
+  const { visible: snapshot, stale, refresh } = useSnapshot();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   const [replace, setReplace] = useState(true);
