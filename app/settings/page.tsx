@@ -6,6 +6,14 @@ import { useSnapshot } from "@/lib/useSnapshot";
 import { CANVAS_ORIGIN } from "@/lib/config";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 
+/** Rank likely syllabi to the top of the picker without hiding anything else. */
+function score(filename: string) {
+  const n = filename.toLowerCase();
+  if (/syllabus|course\s*outline|coursepack|course\s*guide/.test(n)) return 3;
+  if (/outline|orientation|overview|grading/.test(n)) return 2;
+  if (n.endsWith(".pdf")) return 1;
+  return 0;
+}
 
 export default function Settings() {
   const { snapshot, refresh } = useSnapshot();
@@ -13,31 +21,16 @@ export default function Settings() {
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [courseId, setCourseId] = useState("");
+  const [fileId, setFileId] = useState("");
+  const [confirming, setConfirming] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   const courses = snapshot?.courses ?? [];
-  const [confirming, setConfirming] = useState<string | null>(null);
 
-  /**
-   * Deleting a course takes its deadlines, files, modules, grade components and
-   * schedule entries with it — the foreign keys cascade. That is the point when
-   * clearing out last year's courses, but it is not undoable, so the button
-   * arms first and says what will go.
-   */
-  async function removeCourse(id: string) {
-    setBusy(true);
-    const { error } = await supabaseBrowser().from("courses").delete().eq("id", id);
-    setBusy(false);
-    setConfirming(null);
-    setMsg(error ? error.message : "Course removed.");
-    refresh();
-  }
-
-  const countsFor = (courseId: string) => ({
-    deadlines: (snapshot?.deadlines ?? []).filter((d) => d.course_id === courseId).length,
-    files: (snapshot?.files ?? []).filter((f) => f.course_id === courseId).length,
-    items: (snapshot?.moduleItems ?? []).filter((i) => i.course_id === courseId).length,
-  });
+  /** Files already pulled from Canvas for the chosen course, likeliest first. */
+  const syncedFiles = (snapshot?.files ?? [])
+    .filter((f) => f.course_id === courseId)
+    .sort((a, b) => score(b.filename) - score(a.filename) || a.filename.localeCompare(b.filename));
 
   async function mint() {
     setBusy(true);
@@ -60,48 +53,82 @@ export default function Settings() {
 
   async function parseSyllabus(e: React.FormEvent) {
     e.preventDefault();
-    const file = fileInput.current?.files?.[0];
-    if (!file || !courseId) return setMsg("Pick a course and a syllabus file.");
-    setBusy(true);
-    setMsg("Uploading…");
+    if (!courseId) return setMsg("Pick a course first.");
+    const upload = fileInput.current?.files?.[0];
+    if (!fileId && !upload) return setMsg("Pick a synced file, or choose one from your computer.");
 
-    const sb = supabaseBrowser();
-    const { data: auth } = await sb.auth.getUser();
-    const path = `${auth.user!.id}/${courseId}/${file.name}`;
-    const up = await sb.storage.from("course-files").upload(path, file, { upsert: true });
-    if (up.error) {
-      setBusy(false);
-      return setMsg(up.error.message);
+    setBusy(true);
+    let body: Record<string, unknown> = { courseId, force: true };
+
+    if (fileId) {
+      setMsg("Reading the grade breakdown…");
+      body = { ...body, fileId };
+    } else {
+      setMsg("Uploading…");
+      const sb = supabaseBrowser();
+      const { data: auth } = await sb.auth.getUser();
+      const path = `${auth.user!.id}/${courseId}/${upload!.name}`;
+      const up = await sb.storage.from("course-files").upload(path, upload!, { upsert: true });
+      if (up.error) {
+        setBusy(false);
+        return setMsg(up.error.message);
+      }
+      setMsg("Reading the grade breakdown…");
+      body = { ...body, storagePath: path };
     }
 
-    setMsg("Reading the grade breakdown…");
     const res = await fetch("/api/parse-syllabus", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ courseId, storagePath: path, force: true }),
+      body: JSON.stringify(body),
     });
-    const body = await res.json();
+    const out = await res.json();
     setBusy(false);
-    if (!res.ok) return setMsg(body.error ?? "Parsing failed.");
+    if (!res.ok) return setMsg(out.error ?? "Parsing failed.");
     setMsg(
-      body.components?.length
-        ? `Found ${body.components.length} components (confidence: ${body.confidence}). Check them on the Grades page.`
-        : `No breakdown found. ${body.note ?? ""}`,
+      out.components?.length
+        ? `Found ${out.components.length} components (confidence: ${out.confidence}) in ${out.file}. Check them on the Grades page.`
+        : `No breakdown found in ${out.file ?? "that file"}. ${out.note ?? ""}`,
     );
     refresh();
   }
 
+  /**
+   * Deleting a course takes its deadlines, files, modules, grade components and
+   * schedule entries with it — the foreign keys cascade. That is the point when
+   * clearing out last year's courses, but it is not undoable, so the button
+   * arms first and says what will go.
+   */
+  async function removeCourse(id: string) {
+    setBusy(true);
+    const { error } = await supabaseBrowser().from("courses").delete().eq("id", id);
+    setBusy(false);
+    setConfirming(null);
+    setMsg(error ? error.message : "Course removed.");
+    refresh();
+  }
+
+  const countsFor = (id: string) => ({
+    deadlines: (snapshot?.deadlines ?? []).filter((d) => d.course_id === id).length,
+    files: (snapshot?.files ?? []).filter((f) => f.course_id === id).length,
+    items: (snapshot?.moduleItems ?? []).filter((i) => i.course_id === id).length,
+  });
+
   return (
     <div className="shell narrow">
       <Masthead title="Settings" onSynced={refresh}>
-        <p className="dek">Sync token, extension setup, syllabus parsing</p>
+        <p className="dek">Sync token, extension setup, syllabus parsing, courses</p>
       </Masthead>
 
-      {msg && <p className="err" style={{ marginTop: 16 }}>{msg}</p>}
+      {msg && (
+        <p className="err" style={{ marginTop: 16 }}>
+          {msg}
+        </p>
+      )}
 
       <h2 className="sectionhead">1 — Sync token</h2>
       <div className="card stack">
-        <p className="note">
+        <p className="note" style={{ marginTop: 0 }}>
           The extension sends this as a bearer token so the server knows which account to write to. Only a hash is
           stored, so a lost token has to be regenerated rather than looked up.
         </p>
@@ -128,7 +155,10 @@ export default function Settings() {
           </li>
           <li>Open the extension&apos;s Options, paste the sync token and this app&apos;s URL, and save.</li>
           <li>
-            Open <a href={CANVAS_ORIGIN} target="_blank" rel="noreferrer" style={{ textDecoration: "underline" }}>AnimoSpace</a>{" "}
+            Open{" "}
+            <a href={CANVAS_ORIGIN} target="_blank" rel="noreferrer" style={{ textDecoration: "underline" }}>
+              AnimoSpace
+            </a>{" "}
             and stay signed in. It syncs on load and every 15 minutes while the tab is open.
           </li>
         </ol>
@@ -136,11 +166,18 @@ export default function Settings() {
 
       <h2 className="sectionhead">3 — Read a syllabus</h2>
       <form className="card stack" onSubmit={parseSyllabus}>
-        <p className="note">
-          Uploads the file to your private storage bucket, then runs it through Gemini once to pull out the grade
-          weights. The result is cached per course — it only re-runs when you upload again.
+        <p className="note" style={{ marginTop: 0 }}>
+          Pick a file the extension already pulled from Canvas — no re-uploading. It goes to Gemini once and the result
+          is cached per course, so it only re-runs when you ask it to.
         </p>
-        <select className="field" value={courseId} onChange={(e) => setCourseId(e.target.value)}>
+        <select
+          className="field"
+          value={courseId}
+          onChange={(e) => {
+            setCourseId(e.target.value);
+            setFileId("");
+          }}
+        >
           <option value="">Choose a course…</option>
           {courses.map((c) => (
             <option key={c.id} value={c.id}>
@@ -148,7 +185,35 @@ export default function Settings() {
             </option>
           ))}
         </select>
-        <input className="field" ref={fileInput} type="file" accept=".pdf,.txt,.md,text/plain,application/pdf" />
+
+        {courseId && (
+          <select className="field" value={fileId} onChange={(e) => setFileId(e.target.value)}>
+            <option value="">
+              {syncedFiles.length ? "Choose a synced file…" : "No files synced for this course yet"}
+            </option>
+            {syncedFiles.map((f) => (
+              <option key={f.id} value={f.id}>
+                {f.filename}
+                {f.parsed_at ? " (read before)" : ""}
+              </option>
+            ))}
+          </select>
+        )}
+
+        <details>
+          <summary className="note" style={{ cursor: "pointer" }}>
+            Or upload one from your computer
+          </summary>
+          <input
+            className="field"
+            style={{ marginTop: 8 }}
+            ref={fileInput}
+            type="file"
+            accept=".pdf,.txt,.md,text/plain,application/pdf"
+            onChange={() => setFileId("")}
+          />
+        </details>
+
         <div className="nav">
           <button className="btn" data-primary="true" type="submit" disabled={busy}>
             Extract grade breakdown

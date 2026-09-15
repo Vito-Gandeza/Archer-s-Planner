@@ -97,10 +97,13 @@ function statusOf(assignment) {
  * courses from years ago. The term's end date is the honest signal: anything
  * whose term has already finished is last year's business.
  */
-function isCurrent(course, now = new Date()) {
+function isCurrent(course) {
   const end = course?.term?.end_at;
   if (!end) return true; // no end date recorded — assume it is running
-  return new Date(end).getTime() > now.getTime();
+  // Reads the clock directly rather than taking a `now` parameter: this is used
+  // as a filter callback, and Array.filter passes (element, index, array) — a
+  // defaulted date parameter silently received the index instead.
+  return new Date(end).getTime() > Date.now();
 }
 
 async function collect() {
@@ -108,7 +111,7 @@ async function collect() {
   const all = await canvasGet(
     `/api/v1/courses?enrollment_state=active&per_page=${PAGE_SIZE}&include[]=teachers&include[]=term`,
   );
-  const courses = all.filter(isCurrent);
+  const courses = all.filter((c) => isCurrent(c));
 
   const payload = { courses: [], deadlines: [], files: [], modules: [], module_items: [] };
   const skipped = [];

@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Masthead } from "./Chrome";
+import { Masthead, PanelHead } from "./Chrome";
 import WeekGrid from "./WeekGrid";
 import DeadlineDialog from "./DeadlineDialog";
 import { useSnapshot } from "@/lib/useSnapshot";
-import { weekStart, deadlineState, DAY_MS } from "@/lib/planner.mjs";
+import { weekStart, deadlineState, pointsAtStake, dayLoadMinutes, timeUntil, DAY_MS } from "@/lib/planner.mjs";
 import type { Deadline, PlannerSnapshot } from "@/lib/types";
 
 /**
@@ -54,6 +54,31 @@ export default function Timeline({ fixture }: { fixture?: PlannerSnapshot }) {
     return t >= start.getTime() && t < end.getTime();
   });
   const dueToday = inWeek.filter((d) => deadlineState(d, now) === "today");
+
+  const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+  const byCourse = courses
+    .map((c) => {
+      const mine = inWeek.filter((d) => d.course_id === c.id);
+      return {
+        course: c,
+        count: mine.length,
+        points: pointsAtStake(mine) as number,
+        classes: meetings.filter((m) => m.course_id === c.id).length,
+        next: mine.filter((d) => new Date(d.due_at!) >= now).sort((a, b) => a.due_at!.localeCompare(b.due_at!))[0],
+      };
+    })
+    .filter((r) => r.count > 0 || r.classes > 0)
+    .sort((a, b) => b.count - a.count || b.points - a.points);
+
+  const perDay = Array.from({ length: days }, (_, i) => ({
+    name: DAY_NAMES[i] ?? "",
+    deadlines: inWeek.filter((d) => new Date(d.due_at!).getDay() === (i + 1) % 7).length,
+    classMinutes: dayLoadMinutes(meetings, i) as number,
+  }));
+  const busiest = [...perDay].sort(
+    (a, b) => b.deadlines * 120 + b.classMinutes - (a.deadlines * 120 + a.classMinutes),
+  )[0];
+  const clearDays = perDay.filter((d) => d.deadlines === 0 && d.classMinutes === 0).length;
 
   const rangeLabel = `${start.toLocaleDateString(undefined, { month: "short", day: "numeric" })} — ${new Date(
     end.getTime() - DAY_MS,
@@ -125,6 +150,64 @@ export default function Timeline({ fixture }: { fixture?: PlannerSnapshot }) {
           now={now}
           onSelect={setSelected}
         />
+      )}
+
+      {(inWeek.length > 0 || meetings.length > 0) && (
+        <section className="panel rise" style={{ marginTop: 30, ["--i" as string]: 1 }}>
+          <PanelHead title="Week at a glance" count={rangeLabel} />
+
+          <div className="stats" style={{ borderBottom: "1px solid var(--rule)" }}>
+            <div className="stat-cell">
+              <div className="k">Points at stake</div>
+              <div className="v">{Math.round(pointsAtStake(inWeek) as number)}</div>
+              <div className="sub">
+                across {inWeek.length} deadline{inWeek.length === 1 ? "" : "s"}
+              </div>
+            </div>
+            <div className="stat-cell">
+              <div className="k">Class hours</div>
+              <div className="v">
+                {Math.round((perDay.reduce((sum, d) => sum + d.classMinutes, 0) / 60) * 10) / 10}
+              </div>
+              <div className="sub">in the days shown</div>
+            </div>
+            <div className="stat-cell">
+              <div className="k">Busiest day</div>
+              <div className="v" style={{ fontSize: "clamp(26px, 2.6vw, 38px)" }}>
+                {busiest && busiest.deadlines + busiest.classMinutes > 0 ? busiest.name : "—"}
+              </div>
+              <div className="sub">
+                {busiest && busiest.deadlines + busiest.classMinutes > 0
+                  ? `${busiest.deadlines} due · ${Math.round((busiest.classMinutes / 60) * 10) / 10} hr class`
+                  : "nothing scheduled"}
+              </div>
+            </div>
+            <div className="stat-cell">
+              <div className="k">Clear days</div>
+              <div className="v">{clearDays}</div>
+              <div className="sub">no class, nothing due</div>
+            </div>
+          </div>
+
+          <div className="course-week">
+            {byCourse.map((r) => (
+              <div className="cw-row" key={r.course.id}>
+                <span className="code">{r.course.code}</span>
+                <span className="nm" title={r.course.name}>
+                  {r.course.name}
+                </span>
+                <span className="n">
+                  {r.classes ? `${r.classes}×/wk` : "—"}
+                </span>
+                <span className="n">
+                  {r.count} due{r.points ? ` · ${Math.round(r.points)} pts` : ""}
+                </span>
+                <span className="nx">{r.next ? timeUntil(r.next.due_at!, now) : "clear"}</span>
+              </div>
+            ))}
+            {byCourse.length === 0 && <div className="hatchbox">Nothing this week</div>}
+          </div>
+        </section>
       )}
 
       <DeadlineDialog

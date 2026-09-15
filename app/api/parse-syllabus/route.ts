@@ -1,13 +1,10 @@
 import { NextResponse } from "next/server";
 import { supabaseServer } from "@/lib/supabase-server";
+import { extractJson, generateJson, GeminiError } from "@/lib/gemini";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
-// Cheap, multimodal, and plenty for pulling a weights table out of a syllabus.
-// Override with GEMINI_MODEL to move up or down a tier.
-const MODEL = process.env.GEMINI_MODEL ?? "gemini-3.8-flash";
-const ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 const MAX_BYTES = 8 * 1024 * 1024;
 
 const PROMPT = `You are reading a university course syllabus.
@@ -22,7 +19,6 @@ Rules:
 - If the document has no grade breakdown, return an empty components list and
   say why in note.`;
 
-/** Gemini's structured-output schema (an OpenAPI subset). */
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
@@ -30,10 +26,7 @@ const RESPONSE_SCHEMA = {
       type: "ARRAY",
       items: {
         type: "OBJECT",
-        properties: {
-          label: { type: "STRING" },
-          weight_percent: { type: "NUMBER" },
-        },
+        properties: { label: { type: "STRING" }, weight_percent: { type: "NUMBER" } },
         required: ["label", "weight_percent"],
         propertyOrdering: ["label", "weight_percent"],
       },
@@ -47,16 +40,8 @@ const RESPONSE_SCHEMA = {
 
 type Extracted = { label: string; weight_percent: number };
 
-/**
- * Even with a response schema, the model's reply is untrusted input: it reaches
- * the database only through this.
- */
 function parseComponents(raw: string): { components: Extracted[]; confidence: string; note: string } {
-  const start = raw.indexOf("{");
-  const stop = raw.lastIndexOf("}");
-  if (start === -1 || stop <= start) throw new Error("model did not return JSON");
-  const parsed = JSON.parse(raw.slice(start, stop + 1)) as Record<string, unknown>;
-
+  const parsed = extractJson(raw);
   const list = Array.isArray(parsed.components) ? parsed.components : [];
   const components = list
     .map((c) => {
@@ -77,29 +62,27 @@ function parseComponents(raw: string): { components: Extracted[]; confidence: st
 }
 
 /**
- * Body: { courseId, storagePath, force? }
+ * Body: { courseId, fileId? , storagePath?, force? }
  *
- * `storagePath` points at the private course-files bucket; the signed-in user's
- * RLS policy is what decides whether they may read it. The API key stays
- * server-side and never reaches the browser or the extension.
+ * `fileId` points at an already-synced Canvas file — the normal path, since the
+ * extension has usually pulled the syllabus already. Canvas's own file URLs
+ * carry a signed `verifier`, which is what lets the server fetch one without a
+ * session; when that has expired the answer says to re-sync rather than
+ * failing vaguely. `storagePath` remains for a file uploaded by hand.
  */
 export async function POST(request: Request) {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    return NextResponse.json({ error: "GEMINI_API_KEY is not set on the server" }, { status: 500 });
-  }
-
   const sb = await supabaseServer();
   const { data: auth } = await sb.auth.getUser();
   if (!auth.user) return NextResponse.json({ error: "not signed in" }, { status: 401 });
 
-  const { courseId, storagePath, force } = (await request.json()) as {
+  const { courseId, fileId, storagePath, force } = (await request.json()) as {
     courseId?: string;
+    fileId?: string;
     storagePath?: string;
     force?: boolean;
   };
-  if (!courseId || !storagePath) {
-    return NextResponse.json({ error: "courseId and storagePath required" }, { status: 400 });
+  if (!courseId || (!fileId && !storagePath)) {
+    return NextResponse.json({ error: "courseId and one of fileId or storagePath required" }, { status: 400 });
   }
 
   // Parse once per course and reuse the result; re-running costs quota for nothing.
@@ -112,42 +95,58 @@ export async function POST(request: Request) {
     return NextResponse.json({ cached: true, components: existing.length });
   }
 
-  const { data: blob, error: dlError } = await sb.storage.from("course-files").download(storagePath);
-  if (dlError || !blob) return NextResponse.json({ error: dlError?.message ?? "file not found" }, { status: 404 });
-  if (blob.size > MAX_BYTES) return NextResponse.json({ error: "file is larger than 8 MB" }, { status: 413 });
+  let bytes: Buffer;
+  let isPdf: boolean;
+  let label: string;
 
-  const bytes = Buffer.from(await blob.arrayBuffer());
-  const isPdf = blob.type === "application/pdf" || storagePath.toLowerCase().endsWith(".pdf");
-  const parts = isPdf
-    ? [
-        { inline_data: { mime_type: "application/pdf", data: bytes.toString("base64") } },
-        { text: PROMPT },
-      ]
-    : [{ text: `${PROMPT}\n\n--- syllabus ---\n${bytes.toString("utf8").slice(0, 200_000)}` }];
+  if (fileId) {
+    // RLS decides whether this row is theirs to read.
+    const { data: file } = await sb
+      .from("files")
+      .select("filename, canvas_url, content_type")
+      .eq("id", fileId)
+      .maybeSingle();
+    if (!file?.canvas_url) {
+      return NextResponse.json({ error: "that file has no downloadable URL — try re-syncing" }, { status: 404 });
+    }
 
-  const res = await fetch(ENDPOINT, {
-    method: "POST",
-    headers: { "content-type": "application/json", "x-goog-api-key": apiKey },
-    body: JSON.stringify({
-      contents: [{ parts }],
-      generationConfig: {
-        responseMimeType: "application/json",
-        responseSchema: RESPONSE_SCHEMA,
-        temperature: 0,
-      },
-    }),
-  });
-
-  if (!res.ok) {
-    const detail = await res.text();
-    // Quota and bad-key failures are the common ones; pass the reason through.
-    return NextResponse.json({ error: `Gemini: ${detail.slice(0, 300)}` }, { status: res.status === 429 ? 429 : 502 });
+    const res = await fetch(file.canvas_url, { redirect: "follow" });
+    if (!res.ok) {
+      return NextResponse.json(
+        {
+          error:
+            res.status === 401 || res.status === 403
+              ? "Canvas would not serve that file — its download link has expired. Open AnimoSpace to re-sync, then try again."
+              : `Canvas returned ${res.status} for that file`,
+        },
+        { status: 502 },
+      );
+    }
+    const buf = Buffer.from(await res.arrayBuffer());
+    if (buf.byteLength > MAX_BYTES) return NextResponse.json({ error: "file is larger than 8 MB" }, { status: 413 });
+    bytes = buf;
+    label = file.filename;
+    isPdf = (file.content_type ?? "").includes("pdf") || /\.pdf$/i.test(file.filename) || buf.subarray(0, 4).toString() === "%PDF";
+  } else {
+    const { data: blob, error } = await sb.storage.from("course-files").download(storagePath!);
+    if (error || !blob) return NextResponse.json({ error: error?.message ?? "file not found" }, { status: 404 });
+    if (blob.size > MAX_BYTES) return NextResponse.json({ error: "file is larger than 8 MB" }, { status: 413 });
+    bytes = Buffer.from(await blob.arrayBuffer());
+    label = storagePath!;
+    isPdf = blob.type === "application/pdf" || storagePath!.toLowerCase().endsWith(".pdf");
   }
 
-  const body = (await res.json()) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
-  };
-  const raw = (body.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? "").join("");
+  const parts = isPdf
+    ? [{ inline_data: { mime_type: "application/pdf", data: bytes.toString("base64") } }, { text: PROMPT }]
+    : [{ text: `${PROMPT}\n\n--- ${label} ---\n${bytes.toString("utf8").slice(0, 200_000)}` }];
+
+  let raw: string;
+  try {
+    raw = await generateJson(parts, RESPONSE_SCHEMA);
+  } catch (e) {
+    if (e instanceof GeminiError) return NextResponse.json({ error: e.message }, { status: e.status });
+    throw e;
+  }
 
   let result;
   try {
@@ -156,7 +155,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "could not read a grade breakdown out of that file" }, { status: 422 });
   }
   if (!result.components.length) {
-    return NextResponse.json({ components: [], confidence: result.confidence, note: result.note });
+    return NextResponse.json({ components: [], confidence: result.confidence, note: result.note, file: label });
   }
 
   await sb.from("grade_components").delete().eq("course_id", courseId).eq("source", "ai_extracted");
@@ -171,5 +170,7 @@ export async function POST(request: Request) {
   );
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json({ components: result.components, confidence: result.confidence, note: result.note });
+  if (fileId) await sb.from("files").update({ parsed_at: new Date().toISOString() }).eq("id", fileId);
+
+  return NextResponse.json({ components: result.components, confidence: result.confidence, note: result.note, file: label });
 }

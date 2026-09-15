@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Masthead, PanelHead } from "@/components/Chrome";
 import { useSnapshot } from "@/lib/useSnapshot";
 import { supabaseBrowser } from "@/lib/supabase-browser";
@@ -17,6 +17,53 @@ export default function SchedulePage() {
   const { snapshot, stale, refresh } = useSnapshot();
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
+  const [replace, setReplace] = useState(true);
+  const imageInput = useRef<HTMLInputElement>(null);
+
+  /**
+   * Reads a photo or screenshot of the timetable and writes the meetings it can
+   * match to a synced course. Codes it cannot place are reported rather than
+   * guessed into existence, so a misread never invents a course.
+   */
+  async function readImage(e: React.FormEvent) {
+    e.preventDefault();
+    const image = imageInput.current?.files?.[0];
+    if (!image) return setMsg("Choose an image of your schedule first.");
+    if (!courses.length) return setMsg("Sync your courses first — the image is matched against them by code.");
+
+    setBusy(true);
+    setMsg("Uploading…");
+    const sb = supabaseBrowser();
+    const { data: auth } = await sb.auth.getUser();
+    const path = `${auth.user!.id}/schedule/${image.name}`;
+    const up = await sb.storage.from("course-files").upload(path, image, { upsert: true });
+    if (up.error) {
+      setBusy(false);
+      return setMsg(up.error.message);
+    }
+
+    setMsg("Reading your schedule…");
+    const res = await fetch("/api/parse-schedule", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ storagePath: path, replace }),
+    });
+    const out = await res.json();
+    setBusy(false);
+    if (!res.ok) return setMsg(out.error ?? "Could not read that image.");
+
+    setMsg(
+      [
+        `Added ${out.added} of ${out.read} class meetings.`,
+        out.unmatched?.length ? `No course matched: ${out.unmatched.join(", ")}.` : "",
+        out.rejected?.length ? `Skipped ${out.rejected.length} unreadable row(s).` : "",
+        out.note || "",
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+    refresh();
+  }
 
   const courses = snapshot?.courses ?? [];
   const meetings = snapshot?.meetings ?? [];
@@ -71,6 +118,26 @@ export default function SchedulePage() {
         today&apos;s classes and sit behind your deadlines on the timeline.
       </p>
       {msg && <p className="err">{msg}</p>}
+
+      <form className="card stack" onSubmit={readImage} style={{ marginTop: 14 }}>
+        <h2 className="sectionhead" style={{ margin: 0 }}>
+          Read it from a picture
+        </h2>
+        <p className="note" style={{ marginTop: 0 }}>
+          Drop in a screenshot or photo of your timetable and Gemini will fill this page in. Courses are matched by
+          code against what you have synced; anything it cannot place is reported instead of guessed.
+        </p>
+        <input className="field" ref={imageInput} type="file" accept="image/png,image/jpeg,image/webp,application/pdf" />
+        <label className="note" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <input type="checkbox" checked={replace} onChange={(e) => setReplace(e.target.checked)} />
+          Replace the schedule below (uncheck to add to it)
+        </label>
+        <div className="nav">
+          <button className="btn" data-primary="true" type="submit" disabled={busy}>
+            Read schedule
+          </button>
+        </div>
+      </form>
 
       {DAYS.map((day, weekday) => {
         const rows = meetingsForDay(meetings, weekday) as ClassMeeting[];
