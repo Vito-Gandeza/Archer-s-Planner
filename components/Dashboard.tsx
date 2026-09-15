@@ -17,7 +17,7 @@ import {
   weekStart,
   DAY_MS,
 } from "@/lib/planner.mjs";
-import type { Course, Deadline } from "@/lib/types";
+import type { Course, Deadline, PlannerSnapshot } from "@/lib/types";
 
 
 /** Owns its own ticking state so a live second-hand never re-renders the page. */
@@ -47,8 +47,19 @@ function Countdown({ dueAt }: { dueAt: string }) {
   );
 }
 
-export default function Dashboard() {
-  const { snapshot, stale, error, loading, refresh } = useSnapshot();
+/**
+ * `fixture` is for the /preview design harness only: it renders the real
+ * dashboard against sample data without touching Supabase or the offline
+ * cache, so previewing can never leave fake courses behind for the real app
+ * to read back.
+ */
+export default function Dashboard({ fixture }: { fixture?: PlannerSnapshot }) {
+  const live = useSnapshot();
+  const snapshot = fixture ?? live.snapshot;
+  const stale = fixture ? false : live.stale;
+  const error = fixture ? null : live.error;
+  const loading = fixture ? false : live.loading;
+  const refresh = fixture ? () => {} : live.refresh;
   const [now, setNow] = useState(() => new Date());
   const [selected, setSelected] = useState<Deadline | null>(null);
 

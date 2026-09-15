@@ -2,11 +2,11 @@
 
 /**
  * Design harness: the real dashboard rendered against fixture data, with no
- * Supabase and no sign-in. It seeds the same offline cache the app reads on
- * boot, so nothing here is a parallel implementation of the UI.
+ * Supabase and no sign-in. The fixture is passed as a prop rather than written
+ * to the offline cache, so visiting this page cannot leave sample courses
+ * behind for the real app to read back.
  */
 
-import { useState } from "react";
 import Dashboard from "@/components/Dashboard";
 import { weekStart, DAY_MS } from "@/lib/planner.mjs";
 import type { PlannerSnapshot } from "@/lib/types";
@@ -59,14 +59,5 @@ const FIXTURE: PlannerSnapshot = {
 };
 
 export default function Preview() {
-  // Seed before the dashboard's first render so it boots straight from cache.
-  useState(() => {
-    try {
-      localStorage.setItem("planner.snapshot.v1", JSON.stringify(FIXTURE));
-    } catch {
-      /* private mode — the preview simply shows the empty state */
-    }
-    return null;
-  });
-  return <Dashboard />;
+  return <Dashboard fixture={FIXTURE} />;
 }
