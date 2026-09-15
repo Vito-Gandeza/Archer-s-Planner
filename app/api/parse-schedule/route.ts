@@ -43,13 +43,11 @@ const RESPONSE_SCHEMA = {
           mode: { type: "STRING", enum: ["lecture", "laboratory", "online"] },
         },
         required: ["course_code", "day", "start", "end", "room", "mode"],
-        propertyOrdering: ["course_code", "day", "start", "end", "room", "mode"],
       },
     },
     note: { type: "STRING" },
   },
   required: ["meetings", "note"],
-  propertyOrdering: ["meetings", "note"],
 };
 
 const DAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];

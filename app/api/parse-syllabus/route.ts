@@ -28,14 +28,12 @@ const RESPONSE_SCHEMA = {
         type: "OBJECT",
         properties: { label: { type: "STRING" }, weight_percent: { type: "NUMBER" } },
         required: ["label", "weight_percent"],
-        propertyOrdering: ["label", "weight_percent"],
       },
     },
     confidence: { type: "STRING", enum: ["high", "medium", "low"] },
     note: { type: "STRING" },
   },
   required: ["components", "confidence", "note"],
-  propertyOrdering: ["components", "confidence", "note"],
 };
 
 type Extracted = { label: string; weight_percent: number };

@@ -26,6 +26,9 @@ export default function Settings() {
   const fileInput = useRef<HTMLInputElement>(null);
 
   const courses = snapshot?.courses ?? [];
+  // The management list below needs every course, hidden ones included, so they
+  // can be unhidden — but there is no sense offering a hidden course a syllabus.
+  const activeCourses = courses.filter((c) => !c.hidden);
 
   /** Files already pulled from Canvas for the chosen course, likeliest first. */
   const syncedFiles = (snapshot?.files ?? [])
@@ -190,7 +193,7 @@ export default function Settings() {
           }}
         >
           <option value="">Choose a course…</option>
-          {courses.map((c) => (
+          {activeCourses.map((c) => (
             <option key={c.id} value={c.id}>
               {c.code} — {c.name}
             </option>

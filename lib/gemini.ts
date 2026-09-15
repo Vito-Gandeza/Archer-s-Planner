@@ -29,13 +29,21 @@ export class GeminiError extends Error {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * A single GEMINI_MODEL is a *preference*, not a restriction — it goes to the
+ * front of the chain rather than replacing it, otherwise setting one model in
+ * the environment quietly disables the fallback that makes this reliable.
+ * GEMINI_MODELS (plural) is the explicit override for the whole chain.
+ */
 function models(): string[] {
-  const configured = process.env.GEMINI_MODELS ?? process.env.GEMINI_MODEL;
-  const list = (configured ?? "")
+  const explicit = (process.env.GEMINI_MODELS ?? "")
     .split(",")
     .map((m) => m.trim())
     .filter(Boolean);
-  return list.length ? list : DEFAULT_CHAIN;
+  if (explicit.length) return explicit;
+
+  const preferred = (process.env.GEMINI_MODEL ?? "").trim();
+  return preferred ? [preferred, ...DEFAULT_CHAIN.filter((m) => m !== preferred)] : DEFAULT_CHAIN;
 }
 
 export async function generateJson(parts: GeminiPart[], responseSchema: unknown): Promise<string> {
@@ -72,14 +80,15 @@ export async function generateJson(parts: GeminiPart[], responseSchema: unknown)
 
       const detail = (await res.text()).slice(0, 300);
 
-      // A bad key or a malformed request will fail identically on every model,
-      // so stop immediately rather than burning the chain on it.
       if (!RETRY_STATUSES.has(res.status)) {
-        if (res.status === 404) {
-          lastTransient = `${model}: not available to this key`;
-          break; // try the next model — this one simply does not exist for them
+        // 401/403 is the key itself — identical on every model, so stop now.
+        if (res.status === 401 || res.status === 403) {
+          throw new GeminiError(`Gemini rejected the API key: ${detail}`, 400);
         }
-        throw new GeminiError(`Gemini (${model}): ${detail}`, res.status === 400 || res.status === 403 ? 400 : 502);
+        // 400 and 404 are model-specific: a model may not exist for this key, or
+        // may reject a request shape another accepts. Move down the chain.
+        lastTransient = `${model}: ${res.status} ${detail.slice(0, 120)}`;
+        break;
       }
 
       lastTransient = `${model}: ${res.status}`;
