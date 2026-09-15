@@ -102,7 +102,7 @@ npm install && npm run dev
 AnimoSpace tab ──content.js──▶ POST /api/sync ──rpc ingest_sync──▶ Supabase
    (session cookie)             (bearer sync token)   (security definer)  │
                                                                           ▼
-                       browser ◀── anon key + RLS ─────────── dashboard / grades
+                   browser ◀── publishable key + RLS ─────────── dashboard / grades
                           │
                           └── localStorage snapshot ── offline reads
 ```
@@ -110,13 +110,13 @@ AnimoSpace tab ──content.js──▶ POST /api/sync ──rpc ingest_sync─
 - **`/api/sync`** validates and length-caps every field, then hands the payload
   to `ingest_sync`. The token decides whose rows these are; nothing in the body
   can name a user.
-- **Everything else** reads through the anon key with the signed-in session, so
-  RLS is what isolates one student's rows from another's.
+- **Everything else** reads through the publishable key with the signed-in
+  session, so RLS is what isolates one student's rows from another's.
 - **`/api/parse-syllabus`** downloads the file from the student's own storage
-  prefix, sends it to Gemini once with a response schema, validates the JSON that
-  comes back anyway, and
-  writes `grade_components`. It refuses to re-run for a course that already has
-  extracted components unless `force: true`, so a syllabus costs one API call.
+  prefix, sends it to Gemini once with a response schema, validates the JSON it
+  gets back anyway, and writes `grade_components`. It refuses to re-run for a
+  course that already has extracted components unless `force: true`, so a
+  syllabus costs one API call, not one per sync.
 
 ## Tests
 
