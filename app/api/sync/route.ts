@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
-import { CANVAS_ORIGIN, SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/config";
+import { SUPABASE_PUBLISHABLE_KEY, SUPABASE_URL } from "@/lib/config";
 
 export const runtime = "nodejs";
 
@@ -15,10 +15,18 @@ const iso = (v: unknown) => {
   return Number.isNaN(t) ? null : new Date(t).toISOString();
 };
 
+/**
+ * Open CORS is correct here, not lax. This endpoint carries no cookies and no
+ * ambient authority: the bearer token is the whole of its authentication, so
+ * an origin allowlist protects nothing a `curl` could not already do. Pinning
+ * it to the Canvas origin only broke legitimate callers — the extension's own
+ * options page lives on chrome-extension://<id>, whose id is unpredictable.
+ */
 const cors = {
-  "Access-Control-Allow-Origin": CANVAS_ORIGIN,
+  "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, content-type",
   "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Max-Age": "86400",
 };
 
 export async function OPTIONS() {
