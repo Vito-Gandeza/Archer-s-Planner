@@ -93,7 +93,7 @@ function classify(assignment) {
  */
 function isAttendanceTool(assignment) {
   const url = assignment?.external_tool_tag_attributes?.url ?? "";
-  return /rollcall/i.test(url) || /^https?:\/\/rollcall[.-]/i.test(url);
+  return /rollcall/i.test(url);
 }
 
 function statusOf(assignment) {
