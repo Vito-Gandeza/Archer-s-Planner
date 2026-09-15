@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
-import type { Course, CourseFile, Deadline, PlannerSnapshot } from "@/lib/types";
+import type { ClassMeeting, Course, CourseFile, Deadline, Module, ModuleItem, PlannerSnapshot } from "@/lib/types";
 
-const CACHE_KEY = "planner.snapshot.v1";
+const CACHE_KEY = "planner.snapshot.v2";
 
 /**
  * ponytail: the offline copy is a single localStorage blob rather than an
@@ -22,14 +22,17 @@ function readCache(): PlannerSnapshot | null {
 
 export async function loadSnapshot(): Promise<PlannerSnapshot> {
   const sb = supabaseBrowser();
-  const [courses, deadlines, files, components, grades] = await Promise.all([
+  const [courses, deadlines, files, components, grades, modules, moduleItems, meetings] = await Promise.all([
     sb.from("courses").select("*").order("code"),
     sb.from("deadlines").select("*").order("due_at", { nullsFirst: false }),
     sb.from("files").select("*"),
     sb.from("grade_components").select("*"),
     sb.from("grades").select("*"),
+    sb.from("modules").select("*").order("position", { nullsFirst: false }),
+    sb.from("module_items").select("*").order("position", { nullsFirst: false }),
+    sb.from("class_meetings").select("*").order("starts_at"),
   ]);
-  const failed = [courses, deadlines, files, components, grades].find((r) => r.error);
+  const failed = [courses, deadlines, files, components, grades, modules, moduleItems, meetings].find((r) => r.error);
   if (failed?.error) throw new Error(failed.error.message);
   return {
     courses: (courses.data ?? []) as Course[],
@@ -37,6 +40,9 @@ export async function loadSnapshot(): Promise<PlannerSnapshot> {
     files: (files.data ?? []) as CourseFile[],
     components: (components.data ?? []) as PlannerSnapshot["components"],
     grades: (grades.data ?? []) as PlannerSnapshot["grades"],
+    modules: (modules.data ?? []) as Module[],
+    moduleItems: (moduleItems.data ?? []) as ModuleItem[],
+    meetings: (meetings.data ?? []) as ClassMeeting[],
     syncedAt: new Date().toISOString(),
   };
 }

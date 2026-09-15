@@ -54,12 +54,51 @@ export type Grade = {
   source: "scraped" | "manual";
 };
 
-/** Everything the timeline needs in one payload — also what gets cached offline. */
+export type Module = {
+  id: string;
+  course_id: string;
+  canvas_module_id: string;
+  name: string;
+  position: number | null;
+};
+
+/** Canvas's own item types, plus whatever else a course throws at us. */
+export type ModuleItemType = "File" | "Page" | "Assignment" | "Quiz" | "Discussion" | "ExternalUrl" | string;
+
+export type ModuleItem = {
+  id: string;
+  course_id: string;
+  module_id: string;
+  canvas_item_id: string;
+  title: string;
+  type: ModuleItemType;
+  html_url: string | null;
+  canvas_file_id: string | null;
+  /** Set by the student, never by a sync. */
+  deadline_id: string | null;
+  position: number | null;
+};
+
+/** weekday is 0=Monday .. 6=Sunday, matching the timeline grid. */
+export type ClassMeeting = {
+  id: string;
+  course_id: string;
+  weekday: number;
+  starts_at: string; // "09:15:00"
+  ends_at: string;
+  room: string | null;
+  mode: "lecture" | "laboratory" | "online";
+};
+
+/** Everything the dashboard needs in one payload — also what gets cached offline. */
 export type PlannerSnapshot = {
   courses: Course[];
   deadlines: Deadline[];
   files: CourseFile[];
   components: GradeComponent[];
   grades: Grade[];
+  modules: Module[];
+  moduleItems: ModuleItem[];
+  meetings: ClassMeeting[];
   syncedAt: string;
 };

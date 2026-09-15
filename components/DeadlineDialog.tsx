@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import { timeUntil } from "@/lib/planner.mjs";
-import type { Course, CourseFile, Deadline } from "@/lib/types";
+import type { Course, CourseFile, Deadline, ModuleItem } from "@/lib/types";
 
 export function Clock({ date }: { date: Date }) {
   const h = date.getHours();
@@ -21,6 +21,7 @@ export default function DeadlineDialog({
   deadline,
   course,
   files,
+  linkedItems = [],
   now,
   onClose,
   onChanged,
@@ -28,6 +29,8 @@ export default function DeadlineDialog({
   deadline: Deadline | null;
   course?: Course;
   files: CourseFile[];
+  /** Module items the student linked to this deadline on the Modules page. */
+  linkedItems?: ModuleItem[];
   now: Date;
   onClose: () => void;
   onChanged: () => void;
@@ -83,6 +86,27 @@ export default function DeadlineDialog({
             )}
             {deadline.points_possible != null && <> · {deadline.points_possible} pts</>}
           </p>
+
+          {linkedItems.length > 0 && (
+            <>
+              <h3 className="sectionhead">Course material you linked</h3>
+              <div className="mini">
+                {linkedItems.map((i) => (
+                  <a
+                    key={i.id}
+                    className="mini-row"
+                    href={i.html_url ?? "#"}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={i.title}
+                  >
+                    <span className="nm">{i.title}</span>
+                    <span className="tag">{i.type}</span>
+                  </a>
+                ))}
+              </div>
+            </>
+          )}
 
           {files.length > 0 && (
             <>

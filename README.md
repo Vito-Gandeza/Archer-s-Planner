@@ -21,10 +21,17 @@ cannot.
 ## Screens
 
 - **Dashboard** (`/`) — four running counters, a "next up" hero with a live
-  countdown, the queue of what's open, a seven-day density strip, per-course
-  grade standing, and recent files.
-- **Timeline** (`/timeline`) — the week grid: deadlines placed on an hour rail,
-  diagonal hatch for free time.
+  countdown, today's classes, the queue of what's open, a seven-day density
+  strip, per-course grade standing, and recent files.
+- **Timeline** (`/timeline`) — the week grid: class meetings at their real
+  durations with deadlines laned beside them, diagonal hatch for free time.
+- **Schedule** (`/schedule`) — your weekly classes. Canvas does not publish
+  meeting times, so these are entered once and then drive the dashboard and the
+  timeline.
+- **Modules** (`/modules`) — every course module and its items, cached for
+  offline. Link an item to a deadline and it appears in that deadline's panel,
+  so the reading sits next to the thing it is for. A sync never overwrites a
+  link you made.
 - **Grades** (`/grades`) — weights, scores, running total, and "what do I need
   on the rest" projections against a target.
 - **Settings** (`/settings`) — sync token, extension setup, syllabus upload.
@@ -44,6 +51,15 @@ is carried by fill:
 | Due today | Accent left edge, accent time-until label |
 | Overdue | Solid black, reversed out |
 | Done | Hairline edge, struck-through code |
+| Class (lecture) | Washed ground, heavy left edge |
+| Class (laboratory) | Solid, reversed out |
+| Class (online) | Dashed left edge — *not* the accent, which means only "due today" |
+
+Dark mode inverts the palette rather than restyling anything. Because state is
+carried by fill instead of hue, an overdue block that was black-on-white simply
+becomes white-on-black and stays the loudest thing on the page. The choice is
+remembered; with none saved the OS preference decides, and a blocking script
+applies it before first paint so the page never flashes.
 
 Motion is a short rise on entry, a stagger down each section, and width/height
 grows on the meters and density bars — all CSS, and all disabled under
@@ -135,3 +151,8 @@ weighted grade totals, and the "what do I need on the rest" projection.
   messaging the extension directly — no extension ID to configure.
 - Live gradebook scraping (`grades.source = 'scraped'`) is modelled but not
   wired; scores are entered by hand on the Grades page today.
+- A deadline that overlaps a class shares the column with it, so at seven-day
+  width both get about 55px and long course codes still ellipsise. Fewer days
+  (the control in the week bar) or a wider screen fixes it.
+- Courses whose term has ended are no longer synced, but anything already in
+  the database stays until removed from Settings.

@@ -92,12 +92,27 @@ function statusOf(assignment) {
   return "open";
 }
 
+/**
+ * DLSU leaves old enrolments in `active`, so a plain course list still returns
+ * courses from years ago. The term's end date is the honest signal: anything
+ * whose term has already finished is last year's business.
+ */
+function isCurrent(course, now = new Date()) {
+  const end = course?.term?.end_at;
+  if (!end) return true; // no end date recorded — assume it is running
+  return new Date(end).getTime() > now.getTime();
+}
+
 async function collect() {
   // Fails loudly: without the course list there is nothing to sync.
-  const courses = await canvasGet(`/api/v1/courses?enrollment_state=active&per_page=${PAGE_SIZE}&include[]=teachers`);
+  const all = await canvasGet(
+    `/api/v1/courses?enrollment_state=active&per_page=${PAGE_SIZE}&include[]=teachers&include[]=term`,
+  );
+  const courses = all.filter(isCurrent);
 
-  const payload = { courses: [], deadlines: [], files: [] };
+  const payload = { courses: [], deadlines: [], files: [], modules: [], module_items: [] };
   const skipped = [];
+  const staleCount = all.length - courses.length;
 
   for (const course of courses) {
     if (!course?.id || course.access_restricted_by_date) continue;
@@ -174,10 +189,59 @@ async function collect() {
       });
     }
 
+    // Modules are how DLSU instructors actually publish readings and handouts,
+    // so they matter more than the flat file list for finding a week's readings.
+    await sleep(GAP_MS);
+    let modules = [];
+    try {
+      modules = await canvasGet(`/api/v1/courses/${course.id}/modules?include[]=items&per_page=${PAGE_SIZE}`);
+    } catch (e) {
+      if (e instanceof CanvasError && e.isRateLimit) throw e;
+      skipped.push(`${course.course_code ?? course.id}: modules ${e.status ?? "?"}`);
+    }
+
+    for (const m of modules) {
+      if (!m?.id) continue;
+      payload.modules.push({
+        canvas_course_id: String(course.id),
+        canvas_module_id: String(m.id),
+        name: m.name ?? "Module",
+        position: typeof m.position === "number" ? m.position : null,
+      });
+
+      for (const item of m.items ?? []) {
+        if (!item?.id || item.type === "SubHeader") continue;
+        const fileId = item.type === "File" && item.content_id != null ? String(item.content_id) : null;
+        payload.module_items.push({
+          canvas_course_id: String(course.id),
+          canvas_module_id: String(m.id),
+          canvas_item_id: String(item.id),
+          title: item.title ?? "Item",
+          type: item.type ?? "Page",
+          html_url: item.html_url ?? null,
+          canvas_file_id: fileId,
+          position: typeof item.position === "number" ? item.position : null,
+        });
+
+        // A module file the course file listing did not return still needs a
+        // files row, so it can be opened and attached to a deadline.
+        if (fileId && !listed.has(fileId)) {
+          listed.add(fileId);
+          payload.files.push({
+            canvas_course_id: String(course.id),
+            canvas_assignment_id: wantedFileIds.get(fileId) ?? null,
+            canvas_file_id: fileId,
+            filename: item.title ?? `Attachment ${fileId}`,
+            canvas_url: item.html_url ?? `${location.origin}/courses/${course.id}/files/${fileId}`,
+          });
+        }
+      }
+    }
+
     await sleep(GAP_MS);
   }
 
-  return { payload, skipped };
+  return { payload, skipped, staleCount };
 }
 
 /** Turns a failure into something a human can act on, not just a status code. */
@@ -196,7 +260,7 @@ async function sync(trigger) {
 
   syncing = true;
   try {
-    const { payload, skipped } = await collect();
+    const { payload, skipped, staleCount } = await collect();
     const res = await fetch(new URL("/api/sync", appUrl).toString(), {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${syncToken}` },
@@ -209,7 +273,9 @@ async function sync(trigger) {
     await chrome.storage.sync.set({
       lastSync: new Date().toISOString(),
       lastResult:
-        `${body.counts?.deadlines ?? 0} deadlines across ${body.counts?.courses ?? 0} courses (${trigger})` +
+        `${body.counts?.deadlines ?? 0} deadlines, ${body.counts?.module_items ?? 0} module items ` +
+        `across ${body.counts?.courses ?? 0} courses (${trigger})` +
+        (staleCount ? ` — ignored ${staleCount} finished-term course${staleCount === 1 ? "" : "s"}` : "") +
         (skipped.length ? ` — skipped ${skipped.join(", ")}` : ""),
       lastError: "",
     });

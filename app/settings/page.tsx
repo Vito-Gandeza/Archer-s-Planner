@@ -16,6 +16,28 @@ export default function Settings() {
   const fileInput = useRef<HTMLInputElement>(null);
 
   const courses = snapshot?.courses ?? [];
+  const [confirming, setConfirming] = useState<string | null>(null);
+
+  /**
+   * Deleting a course takes its deadlines, files, modules, grade components and
+   * schedule entries with it — the foreign keys cascade. That is the point when
+   * clearing out last year's courses, but it is not undoable, so the button
+   * arms first and says what will go.
+   */
+  async function removeCourse(id: string) {
+    setBusy(true);
+    const { error } = await supabaseBrowser().from("courses").delete().eq("id", id);
+    setBusy(false);
+    setConfirming(null);
+    setMsg(error ? error.message : "Course removed.");
+    refresh();
+  }
+
+  const countsFor = (courseId: string) => ({
+    deadlines: (snapshot?.deadlines ?? []).filter((d) => d.course_id === courseId).length,
+    files: (snapshot?.files ?? []).filter((f) => f.course_id === courseId).length,
+    items: (snapshot?.moduleItems ?? []).filter((i) => i.course_id === courseId).length,
+  });
 
   async function mint() {
     setBusy(true);
@@ -133,6 +155,46 @@ export default function Settings() {
           </button>
         </div>
       </form>
+
+      <h2 className="sectionhead">Your courses</h2>
+      <div className="card">
+        <p className="note" style={{ marginTop: 0 }}>
+          The extension now ignores courses whose term has already ended, so old ones stop arriving — but anything
+          already synced stays until you remove it here. Removing a course also removes its deadlines, files, modules
+          and grade breakdown. It cannot be undone.
+        </p>
+        {courses.length === 0 && <div className="hatchbox">No courses synced yet</div>}
+        {courses.map((c) => {
+          const n = countsFor(c.id);
+          return (
+            <div className="course-row" key={c.id}>
+              <span className="code">{c.code}</span>
+              <span className="nm" title={c.name}>
+                {c.name}
+                <br />
+                <span className="stat">
+                  {n.deadlines} deadline{n.deadlines === 1 ? "" : "s"} · {n.files} file{n.files === 1 ? "" : "s"} ·{" "}
+                  {n.items} module item{n.items === 1 ? "" : "s"}
+                </span>
+              </span>
+              {confirming === c.id ? (
+                <span className="nav">
+                  <button className="btn danger" onClick={() => removeCourse(c.id)} disabled={busy}>
+                    Delete for good
+                  </button>
+                  <button className="btn btn-ghost" onClick={() => setConfirming(null)}>
+                    Cancel
+                  </button>
+                </span>
+              ) : (
+                <button className="btn btn-ghost" onClick={() => setConfirming(c.id)}>
+                  Remove
+                </button>
+              )}
+            </div>
+          );
+        })}
+      </div>
 
       <h2 className="sectionhead">Account</h2>
       <div className="nav">

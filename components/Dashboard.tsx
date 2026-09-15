@@ -15,9 +15,12 @@ import {
   timeUntil,
   weekPulse,
   weekStart,
+  classNow,
+  formatTime,
+  toMinutes,
   DAY_MS,
 } from "@/lib/planner.mjs";
-import type { Course, Deadline, PlannerSnapshot } from "@/lib/types";
+import type { ClassMeeting, Course, Deadline, PlannerSnapshot } from "@/lib/types";
 
 
 /** Owns its own ticking state so a live second-hand never re-renders the page. */
@@ -73,6 +76,8 @@ export default function Dashboard({ fixture }: { fixture?: PlannerSnapshot }) {
   const files = snapshot?.files ?? [];
   const components = snapshot?.components ?? [];
   const grades = snapshot?.grades ?? [];
+  const meetings = useMemo(() => snapshot?.meetings ?? [], [snapshot]);
+  const moduleItems = snapshot?.moduleItems ?? [];
   const courseOf = useMemo(() => new Map(courses.map((c) => [c.id, c])), [courses]);
 
   const open = deadlines.filter((d) => d.status === "open");
@@ -107,6 +112,12 @@ export default function Dashboard({ fixture }: { fixture?: PlannerSnapshot }) {
 
   const recentFiles = [...files].slice(-7).reverse();
 
+  const { today, current, next } = classNow(meetings, now) as {
+    today: ClassMeeting[];
+    current: ClassMeeting | null;
+    next: ClassMeeting | null;
+  };
+
   async function toggleDone(d: Deadline) {
     await supabaseBrowser().from("deadlines").update({ status: "submitted" }).eq("id", d.id);
     refresh();
@@ -116,11 +127,14 @@ export default function Dashboard({ fixture }: { fixture?: PlannerSnapshot }) {
     <div className="shell">
       <Masthead title="Archer's Planner" onSynced={refresh}>
         <p className="dek">
-          {now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
-          {" · "}
-          {courses.length} course{courses.length === 1 ? "" : "s"}
-          {" · "}
-          {stale ? "offline copy" : loading ? "syncing…" : "up to date"}
+          {[
+            now.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" }),
+            `${courses.length} course${courses.length === 1 ? "" : "s"}`,
+            today.length > 0 ? `${today.length} class${today.length === 1 ? "" : "es"} today` : null,
+            stale ? "offline copy" : loading ? "syncing…" : "up to date",
+          ]
+            .filter(Boolean)
+            .join(" · ")}
         </p>
       </Masthead>
 
@@ -175,6 +189,52 @@ export default function Dashboard({ fixture }: { fixture?: PlannerSnapshot }) {
             </section>
 
             <section className="panel rise" style={{ ["--i" as string]: 3 }}>
+              <PanelHead
+                title="Today"
+                count={
+                  <Link href="/schedule" style={{ textDecoration: "underline" }}>
+                    {meetings.length ? "Edit schedule" : "Add your schedule"}
+                  </Link>
+                }
+              />
+              {today.length ? (
+                today.map((m) => {
+                  const course = courseOf.get(m.course_id);
+                  const mins = now.getHours() * 60 + now.getMinutes();
+                  const state =
+                    m === current ? "now" : toMinutes(m.ends_at) <= mins ? "done" : m === next ? "next" : "later";
+                  return (
+                    <div className="today-row" key={m.id} data-state={state}>
+                      <i className="bar" />
+                      <span className="code">
+                        {course?.code ?? "—"}
+                        {state === "now" && <span className="tagnow">in session</span>}
+                        {state === "next" && <span className="tagnow" style={{ color: "var(--muted)" }}>up next</span>}
+                      </span>
+                      <span className="where">
+                        {m.room ? `${m.room} · ` : ""}
+                        {m.mode}
+                        {course?.instructor ? ` · ${course.instructor}` : ""}
+                      </span>
+                      <span className="when">
+                        {formatTime(m.starts_at)} — {formatTime(m.ends_at)}
+                      </span>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="hatchbox">
+                  {meetings.length ? "No classes today" : "No schedule yet"}
+                  <small>
+                    {meetings.length
+                      ? "A clear day — good time to get ahead."
+                      : "Add your weekly classes once and they appear here and on the timeline."}
+                  </small>
+                </div>
+              )}
+            </section>
+
+            <section className="panel rise" style={{ ["--i" as string]: 4 }}>
               <PanelHead title="Queue" count={`${rest.length} of ${queue.length}`} />
               {rest.length ? (
                 <div className="tasks">
@@ -316,6 +376,7 @@ export default function Dashboard({ fixture }: { fixture?: PlannerSnapshot }) {
         deadline={selected}
         course={selected ? courseOf.get(selected.course_id) : undefined}
         files={selected ? files.filter((f) => f.deadline_id === selected.id) : []}
+        linkedItems={selected ? moduleItems.filter((i) => i.deadline_id === selected.id) : []}
         now={now}
         onClose={() => setSelected(null)}
         onChanged={refresh}

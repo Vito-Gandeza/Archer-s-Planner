@@ -11,13 +11,33 @@
   --hatch: #ededed;
   --wash: #f6f6f6;
   --col-gap: 10px;
+  --danger: #b00020;
   --ease: cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+
+/* Dark mode inverts the palette rather than restyling anything: because every
+   state is carried by fill (solid vs outlined) rather than by hue, an
+   "overdue" block that was black-on-white simply becomes white-on-black and
+   still reads as the filled, loudest thing on the page. The accent is lifted
+   so it stays legible on a dark ground, and still means only "due today". */
+:root[data-theme="dark"] {
+  --ink: #f2f2f2;
+  --paper: #0c0c0c;
+  --muted: #8b8b8b;
+  --faint: #5c5c5c;
+  --rule: #2c2c2c;
+  --accent: #2fb673;
+  --hatch: #1b1b1b;
+  --wash: #161616;
+  --danger: #ff6b6b;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; }
 
 html, body {
   margin: 0;
+  transition: background-color 0.2s var(--ease), color 0.2s var(--ease);
   padding: 0;
   background: var(--paper);
   color: var(--ink);
@@ -452,18 +472,71 @@ a.mini-row:hover { padding-left: 6px; }
 .block[data-state="today"] .until { color: var(--accent); }
 
 .block .code {
-  font-size: clamp(15px, 1.35vw, 22px);
+  font-size: clamp(13px, 1.25vw, 21px);
   font-weight: 900;
   letter-spacing: -0.035em;
-  line-height: 0.95;
+  line-height: 1;
   text-transform: uppercase;
   margin-top: 1px;
+  /* The code is the one thing that must stay readable, so it shrinks and
+     ellipsises rather than spilling out of a half-width lane. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.block .title { font-size: 10.5px; font-weight: 500; line-height: 1.25; opacity: 0.78; }
+/* Two blocks sharing a column get roughly 55px of usable width, so the code
+   has to give up padding and tracking before it gives up characters. */
+.block[data-narrow="true"] { padding: 6px 5px 6px 6px; }
+.block[data-narrow="true"] .code { font-size: 10.5px; letter-spacing: -0.045em; }
+.block[data-narrow="true"] .time { font-size: 9.5px; letter-spacing: -0.03em; }
+.block[data-narrow="true"] .foot .kind { font-size: 8.5px; }
+.block[data-narrow="true"] .foot .files { display: none; }
+
+.block .title {
+  font-size: 10.5px;
+  font-weight: 500;
+  line-height: 1.25;
+  opacity: 0.78;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  min-height: 0;
+}
+.block[data-narrow="true"] .title { -webkit-line-clamp: 3; font-size: 9.5px; line-height: 1.2; }
+
 .block .foot { margin-top: auto; display: flex; align-items: baseline; gap: 6px; font-size: 10px; min-width: 0; }
-.block .foot .kind { font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; }
+.block .foot .kind { font-weight: 800; text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap; }
 .block .foot .files { color: var(--muted); font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .block[data-state="overdue"] .foot .files { color: var(--faint); }
+
+/* A block too short for everything keeps the time and the code and drops the rest. */
+.block[data-short="true"] { padding: 5px 8px 5px; gap: 0; }
+.block[data-short="true"] .title,
+.block[data-short="true"] .foot { display: none; }
+.block[data-short="true"] .code { font-size: 13px; }
+.block[data-narrow="true"] .topline .until { display: none; }
+
+/* ---------------------------------------------------------- class blocks
+   Classes are context, not tasks, so they sit visually behind deadlines: a
+   washed ground rather than the white/black a deadline gets. Online classes
+   are marked with a dashed edge, not the accent — the accent means "due
+   today" and nothing else, everywhere in this app. */
+.block.class {
+  background: var(--wash);
+  border: 1px solid var(--rule);
+  border-left: 5px solid var(--ink);
+  cursor: default;
+  z-index: 0;
+}
+.block.class:hover { border-left-width: 5px; }
+.block.class[data-mode="laboratory"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.block.class[data-mode="laboratory"] .title { opacity: 0.66; }
+.block.class[data-mode="laboratory"] .foot .files { color: var(--faint); }
+.block.class[data-mode="online"] { border-left-style: dashed; }
+.block.class .time { font-weight: 700; font-size: 10px; }
+.block.class .until { color: var(--muted); }
+.block:not(.class) { z-index: 1; }
 
 /* =================================================================
    FORMS / TABLES / DIALOG
@@ -508,29 +581,187 @@ dialog {
   width: calc(100% - 32px);
   animation: rise 0.28s var(--ease) both;
 }
-dialog::backdrop { background: rgba(255, 255, 255, 0.72); }
+dialog::backdrop { background: rgb(from var(--paper) r g b / 0.72); }
+
+
+/* =================================================================
+   SCHEDULE / MODULES
+   ================================================================= */
+.sched-row {
+  display: grid;
+  grid-template-columns: minmax(96px, 1.1fr) 92px repeat(2, minmax(84px, 0.7fr)) minmax(84px, 0.8fr) minmax(90px, 0.7fr) 44px;
+  gap: 8px;
+  align-items: center;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.sched-row.head { border-bottom: 2px solid var(--ink); padding-bottom: 8px; }
+.sched-row.head span {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.sched-row select.field, .sched-row input.field { padding: 6px 7px; font-size: 12.5px; }
+
+/* Today's classes on the dashboard. */
+.today-row {
+  display: grid;
+  grid-template-columns: 4px minmax(72px, 0.8fr) minmax(0, 2fr) minmax(96px, 0.9fr);
+  gap: 12px;
+  align-items: center;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.today-row:last-child { border-bottom: 0; }
+.today-row .bar { align-self: stretch; background: var(--rule); }
+.today-row[data-state="now"] .bar { background: var(--accent); }
+.today-row[data-state="done"] { opacity: 0.45; }
+.today-row[data-state="next"] .bar { background: var(--ink); }
+.today-row .code { font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.02em; }
+.today-row .where { font-size: 12px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.today-row .when { font-size: 11.5px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.today-row[data-state="now"] .when { color: var(--accent); }
+.today-row .tagnow {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--accent);
+  display: block;
+}
+
+/* Modules. */
+.module { border-bottom: 1px solid var(--rule); padding: 0 0 4px; }
+.module > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 0;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.module > summary::-webkit-details-marker { display: none; }
+.module > summary .nm { font-size: 13.5px; font-weight: 800; letter-spacing: -0.01em; }
+.module > summary .n { font-size: 10.5px; font-weight: 700; color: var(--muted); white-space: nowrap; }
+.module[open] > summary .nm { text-decoration: underline; text-underline-offset: 3px; }
+
+.item-row {
+  display: grid;
+  grid-template-columns: 58px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0 8px 10px;
+  border-top: 1px solid var(--rule);
+  font-size: 12.5px;
+}
+.item-row .type {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.item-row .nm { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.item-row a.nm:hover { text-decoration: underline; }
+.item-row select.field { font-size: 11px; padding: 4px 6px; width: auto; max-width: 190px; }
+.item-row[data-linked="true"] { background: var(--wash); }
+.linkchip {
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border: 1px solid var(--ink);
+  padding: 2px 5px;
+  white-space: nowrap;
+}
+
+/* Course management. */
+.course-row {
+  display: grid;
+  grid-template-columns: minmax(80px, 0.6fr) minmax(0, 2fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 11px 0;
+  border-bottom: 1px solid var(--rule);
+}
+.course-row .code { font-size: 14px; font-weight: 900; text-transform: uppercase; letter-spacing: -0.02em; }
+.course-row .nm { font-size: 12.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.danger { border-color: var(--danger) !important; color: var(--danger) !important; background: var(--paper) !important; }
+.danger:hover { background: var(--danger) !important; color: var(--paper) !important; }
 
 /* =================================================================
    RESPONSIVE
+   Checked against iPad Air portrait (820), iPad Air landscape (1180) and
+   iPhone 13 Pro Max (428).
    ================================================================= */
+@media (max-width: 1180px) {
+  .deck { gap: 26px; }
+}
+
+/* iPad portrait and below: one column, the aside falls under the main deck. */
 @media (max-width: 1080px) {
   .deck { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .shell { padding: 26px 22px 64px; }
 }
+
+@media (max-width: 860px) {
+  .sched-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 40px;
+    row-gap: 6px;
+  }
+  .sched-row.head { display: none; }
+  .sched-row > *:nth-child(7) { grid-row: 1; grid-column: 3; }
+}
+
 @media (max-width: 780px) {
   .shell { padding: 22px 16px 56px; }
+  .masthead { gap: 14px; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .stat-cell { padding: 14px 14px 12px; }
   .stat-cell:nth-child(3) { border-left: 0; padding-left: 0; }
   .stat-cell:nth-child(n + 3) { border-top: 1px solid var(--rule); }
-  .hero { grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  .hero { grid-template-columns: minmax(0, 1fr); gap: 16px; padding: 20px 18px 18px; }
   .countdown { text-align: left; }
   .task-row { grid-template-columns: 22px 1fr auto; row-gap: 2px; }
   .task-row .name { grid-column: 2 / -1; }
   .task-row .when { grid-column: 2; }
   .task-row .left { grid-column: 3; }
-  .scroller { overflow-x: auto; }
-  .grid { grid-template-columns: 44px repeat(var(--days), minmax(128px, 1fr)) 0; }
+  .scroller { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .grid { grid-template-columns: 40px repeat(var(--days), minmax(132px, 1fr)) 0; column-gap: 6px; }
   .rail.right { display: none; }
   .pulse { gap: 4px; }
   .pulse-bar { height: 56px; }
+  .item-row { grid-template-columns: 52px minmax(0, 1fr); row-gap: 4px; }
+  .item-row > *:nth-child(3) { grid-column: 1 / -1; }
+  .item-row select.field { max-width: 100%; width: 100%; }
 }
+
+/* iPhone 13 Pro Max is 428 CSS px wide; give the type room rather than
+   shrinking everything to fit a week that was never going to fit. */
+@media (max-width: 520px) {
+  .shell { padding: 18px 14px 48px; }
+  .masthead h1 { font-size: clamp(26px, 9vw, 38px); }
+  .nav a, .nav button, .btn { padding: 6px 9px; font-size: 10px; letter-spacing: 0.04em; }
+  .stat-cell .v { font-size: 30px; }
+  .stat-cell .sub { font-size: 10px; }
+  .hero .code { font-size: clamp(32px, 12vw, 48px); }
+  .hero .task { font-size: 14px; }
+  .countdown .big { font-size: clamp(26px, 9vw, 36px); }
+  .panel { margin-bottom: 30px; }
+  .today-row { grid-template-columns: 4px minmax(64px, 1fr) auto; row-gap: 2px; }
+  .today-row .where { grid-column: 2 / -1; }
+  .course-row { grid-template-columns: minmax(0, 1fr) auto; row-gap: 2px; }
+  .course-row .nm { grid-column: 1 / -1; }
+  .grid { grid-template-columns: 34px repeat(var(--days), minmax(124px, 1fr)) 0; }
+  .weekbar { gap: 10px; }
+  .legend { gap: 12px; font-size: 10px; }
+  table.sheet td, table.sheet th { font-size: 12px; }
+  input.cell { width: 64px; }
+  dialog { width: calc(100% - 20px); }
+}
+
+/* ------------------------------------------------------------ theme toggle */
+.theme-toggle { min-width: 38px; text-align: center; }

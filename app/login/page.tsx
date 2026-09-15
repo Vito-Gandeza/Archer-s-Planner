@@ -28,9 +28,9 @@ export default function Login() {
   return (
     <div className="shell narrow" style={{ maxWidth: 460 }}>
       <header className="masthead">
-        <div>
-          <h1>Planner</h1>
-          <p className="dek">Canvas deadlines and grades, in one timeline.</p>
+        <div className="rise">
+          <h1>Archer&apos;s Planner</h1>
+          <p className="dek">Canvas deadlines, schedule and grades, in one dashboard.</p>
         </div>
       </header>
       <hr className="rule" />

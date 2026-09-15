@@ -1,11 +1,11 @@
 "use client";
 
-import { packDay, hourRange, deadlineState, timeUntil, DAY_MS } from "@/lib/planner.mjs";
+import { hourRange, deadlineState, timeUntil, packDayWithClasses, formatTime, toMinutes, DAY_MS } from "@/lib/planner.mjs";
 import { Clock } from "./DeadlineDialog";
-import type { Course, CourseFile, Deadline } from "@/lib/types";
+import type { ClassMeeting, Course, CourseFile, Deadline } from "@/lib/types";
 
-const HOUR_PX = 62;
-const BLOCK_MIN_PX = 88;
+const HOUR_PX = 64;
+const DEADLINE_MIN_PX = 92;
 const BLOCK_MINUTES = 45;
 
 function HourTick({ hour, top }: { hour: number; top: number }) {
@@ -25,11 +25,22 @@ type Props = {
   courses: Course[];
   deadlines: Deadline[];
   files: CourseFile[];
+  meetings: ClassMeeting[];
   now: Date;
   onSelect: (d: Deadline) => void;
 };
 
-export default function WeekGrid({ weekStart, days, courses, deadlines, files, now, onSelect }: Props) {
+type Packed = {
+  kind: "class" | "deadline";
+  deadline?: Deadline;
+  meeting?: ClassMeeting;
+  start: number;
+  end: number;
+  lane: number;
+  lanes: number;
+};
+
+export default function WeekGrid({ weekStart, days, courses, deadlines, files, meetings, now, onSelect }: Props) {
   const end = new Date(weekStart.getTime() + days * DAY_MS);
   const inWeek = deadlines.filter((d) => {
     if (!d.due_at) return false;
@@ -37,7 +48,7 @@ export default function WeekGrid({ weekStart, days, courses, deadlines, files, n
     return t >= weekStart.getTime() && t < end.getTime();
   });
 
-  const [lo, hi] = hourRange(inWeek) as [number, number];
+  const [lo, hi] = hourRange(inWeek, [8, 24], meetings) as [number, number];
   const bodyHeight = (hi - lo) * HOUR_PX;
   const courseOf = new Map(courses.map((c) => [c.id, c]));
   const fileCount = new Map<string, number>();
@@ -53,7 +64,8 @@ export default function WeekGrid({ weekStart, days, courses, deadlines, files, n
       const t = new Date(d.due_at!).getTime();
       return t >= dayDate.getTime() && t < dayEnd.getTime();
     });
-    return { dayDate, packed: packDay(forDay, BLOCK_MINUTES) as PackedItem[] };
+    const dayMeetings = meetings.filter((m) => m.weekday === i);
+    return { dayDate, packed: packDayWithClasses(forDay, dayMeetings, BLOCK_MINUTES) as Packed[] };
   });
 
   const nowTop =
@@ -90,28 +102,68 @@ export default function WeekGrid({ weekStart, days, courses, deadlines, files, n
               </div>
             )}
             {nowTop !== null && sameDay(dayDate, now) && <div className="nowline" style={{ top: nowTop }} />}
+
             {packed.map((item, bi) => {
-              const d = item.deadline;
+              const width = 100 / item.lanes;
+              const rawTop = (item.start - lo * 60) * (HOUR_PX / 60);
+              // A class keeps its real duration; a deadline is an instant, so it
+              // gets a fixed block tall enough to hold its own label.
+              const height =
+                item.kind === "class"
+                  ? Math.max(38, (item.end - item.start) * (HOUR_PX / 60))
+                  : DEADLINE_MIN_PX;
+              const top = Math.max(0, Math.min(rawTop, bodyHeight - height));
+              const common = {
+                style: {
+                  top,
+                  height,
+                  left: `calc(${item.lane * width}% + ${item.lane ? 2 : 0}px)`,
+                  width: `calc(${width}% - ${item.lanes > 1 ? 2 : 0}px)`,
+                } as React.CSSProperties,
+                "data-narrow": item.lanes > 1,
+                "data-short": height < 64,
+              };
+
+              if (item.kind === "class" && item.meeting) {
+                const m = item.meeting;
+                const course = courseOf.get(m.course_id);
+                return (
+                  <div
+                    key={`m${m.id}-${bi}`}
+                    className="block class"
+                    data-mode={m.mode}
+                    title={`${course?.code ?? ""} ${formatTime(m.starts_at)}–${formatTime(m.ends_at)}${m.room ? ` · ${m.room}` : ""}`}
+                    {...common}
+                  >
+                    <div className="topline">
+                      <span className="time">
+                        {formatTime(m.starts_at)} — {formatTime(m.ends_at)}
+                      </span>
+                      <span className="until">{Math.round((toMinutes(m.ends_at) - toMinutes(m.starts_at)) / 6) / 10} hr</span>
+                    </div>
+                    <div className="code">{course?.code ?? "—"}</div>
+                    <div className="title">{course?.name ?? ""}</div>
+                    <div className="foot">
+                      {m.room && <span className="kind">{m.room}</span>}
+                      <span className="files">{course?.instructor ?? m.mode}</span>
+                    </div>
+                  </div>
+                );
+              }
+
+              const d = item.deadline!;
               const due = new Date(d.due_at!);
               const state = deadlineState(d, now) as string;
               const course = courseOf.get(d.course_id);
               const nFiles = fileCount.get(d.id) ?? 0;
-              const top = Math.min((item.start - lo * 60) * (HOUR_PX / 60), bodyHeight - BLOCK_MIN_PX);
-              const width = 100 / item.lanes;
               return (
                 <button
                   key={d.id}
                   className="block"
                   data-state={state}
-                  style={{
-                    top: Math.max(0, top),
-                    height: BLOCK_MIN_PX,
-                    left: `calc(${item.lane * width}% + ${item.lane ? 2 : 0}px)`,
-                    width: `calc(${width}% - ${item.lanes > 1 ? 2 : 0}px)`,
-                    ["--i" as string]: bi,
-                  }}
+                  title={`${course?.code ?? ""} — ${d.title}`}
                   onClick={() => onSelect(d)}
-                  title={d.title}
+                  {...common}
                 >
                   <div className="topline">
                     <span className="time">
@@ -123,7 +175,11 @@ export default function WeekGrid({ weekStart, days, courses, deadlines, files, n
                   <div className="title">{d.title}</div>
                   <div className="foot">
                     <span className="kind">{d.type}</span>
-                    {nFiles > 0 && <span className="files">{nFiles} file{nFiles === 1 ? "" : "s"}</span>}
+                    {nFiles > 0 && (
+                      <span className="files">
+                        {nFiles} file{nFiles === 1 ? "" : "s"}
+                      </span>
+                    )}
                   </div>
                 </button>
               );
@@ -140,8 +196,6 @@ export default function WeekGrid({ weekStart, days, courses, deadlines, files, n
     </div>
   );
 }
-
-type PackedItem = { deadline: Deadline; start: number; end: number; lane: number; lanes: number };
 
 function sameDay(a: Date, b: Date) {
   return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
