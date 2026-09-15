@@ -799,3 +799,102 @@ dialog::backdrop { background: rgb(from var(--paper) r g b / 0.72); }
 .block[data-compact="true"] .foot { display: none; }
 .block[data-compact="true"] .title { -webkit-line-clamp: 1; }
 .block[data-compact="true"] .code { font-size: 13px; }
+
+/* =================================================================
+   MONTH GRID
+   Most DLSU deadlines land at 11:59pm, so an hour rail spends its
+   height on information nobody needs. A month of dated cells says
+   more in less space.
+   ================================================================= */
+.month {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  border-top: 2px solid var(--ink);
+  border-left: 1px solid var(--rule);
+}
+.month-head {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  padding: 8px 8px 7px;
+  border-right: 1px solid var(--rule);
+  border-bottom: 1px solid var(--ink);
+}
+.month-cell {
+  min-height: 104px;
+  border-right: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  padding: 6px 6px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  animation: fade 0.4s var(--ease) both;
+  animation-delay: calc(var(--i, 0) * 40ms);
+}
+.month-cell[data-outside="true"] { background-image: repeating-linear-gradient(45deg, var(--hatch) 0 1px, transparent 1px 7px); }
+.month-cell[data-outside="true"] .n { color: var(--faint); }
+.month-cell[data-weekend="true"] { background-color: var(--wash); }
+.month-cell[data-today="true"] { box-shadow: inset 0 0 0 2px var(--accent); }
+
+.month-date { display: flex; align-items: center; gap: 5px; }
+.month-date .n { font-size: 13px; font-weight: 900; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.month-cell[data-today="true"] .month-date .n { color: var(--accent); }
+.month-date .cls { font-size: 13px; line-height: 1; color: var(--muted); letter-spacing: 1px; }
+.month-date .addday {
+  margin-left: auto;
+  border: 0;
+  background: none;
+  color: var(--faint);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1;
+  padding: 0 2px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s var(--ease), color 0.15s var(--ease);
+}
+.month-cell:hover .addday, .addday:focus-visible { opacity: 1; }
+.addday:hover { color: var(--ink); }
+
+.chip {
+  display: block;
+  width: 100%;
+  text-align: left;
+  border: 0;
+  border-left: 3px solid var(--ink);
+  background: var(--paper);
+  padding: 3px 5px;
+  font: inherit;
+  cursor: pointer;
+  overflow: hidden;
+  transition: padding-left 0.15s var(--ease);
+}
+.chip:hover { padding-left: 8px; }
+.chip[data-state="today"] { border-left-color: var(--accent); }
+.chip[data-state="overdue"] { background: var(--ink); color: var(--paper); }
+.chip[data-state="done"] { border-left-color: var(--rule); color: var(--muted); }
+.chip[data-state="done"] .c { text-decoration: line-through; }
+.chip[data-manual="true"] { border-left-style: dotted; border-left-width: 4px; }
+.chip .c { display: block; font-size: 9.5px; font-weight: 900; letter-spacing: 0.02em; text-transform: uppercase; }
+.chip .t {
+  display: block;
+  font-size: 10px;
+  line-height: 1.2;
+  opacity: 0.8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.month-cell .more { font-size: 9.5px; font-weight: 700; color: var(--muted); padding-left: 3px; }
+
+@media (max-width: 780px) {
+  .month-cell { min-height: 78px; padding: 4px 3px 6px; }
+  .chip .t { display: none; }
+  .chip { border-left-width: 4px; padding: 3px 4px; }
+  .month-head { padding: 6px 3px; font-size: 9px; }
+  .month-date .cls { display: none; }
+  .addday { opacity: 1; }
+}

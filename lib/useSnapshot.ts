@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { supabaseBrowser } from "@/lib/supabase-browser";
 import type { ClassMeeting, Course, CourseFile, Deadline, Module, ModuleItem, PlannerSnapshot } from "@/lib/types";
 
-const CACHE_KEY = "planner.snapshot.v3";
+const CACHE_KEY = "planner.snapshot.v4";
 
 /**
  * ponytail: the offline copy is a single localStorage blob rather than an
@@ -57,7 +57,9 @@ export async function loadSnapshot(): Promise<PlannerSnapshot> {
 function withoutHidden(s: PlannerSnapshot): PlannerSnapshot {
   const courses = s.courses.filter((c) => !c.hidden);
   const live = new Set(courses.map((c) => c.id));
-  const mine = <T extends { course_id: string }>(rows: T[]) => rows.filter((r) => live.has(r.course_id));
+  // A manual task with no course belongs to nobody's course, so it always stays.
+  const mine = <T extends { course_id: string | null }>(rows: T[]) =>
+    rows.filter((r) => r.course_id === null || live.has(r.course_id));
   return {
     ...s,
     courses,

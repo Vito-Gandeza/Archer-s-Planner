@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Masthead, PanelHead } from "./Chrome";
 import DeadlineDialog, { Clock } from "./DeadlineDialog";
+import TaskDialog from "./TaskDialog";
 import { useSnapshot } from "@/lib/useSnapshot";
 import { CANVAS_ORIGIN } from "@/lib/config";
 import { supabaseBrowser } from "@/lib/supabase-browser";
@@ -66,6 +67,7 @@ export default function Dashboard({ fixture }: { fixture?: PlannerSnapshot }) {
   const refresh = fixture ? () => {} : live.refresh;
   const [now, setNow] = useState(() => new Date());
   const [selected, setSelected] = useState<Deadline | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   useEffect(() => {
     const id = setInterval(() => setNow(new Date()), 60_000);
@@ -79,7 +81,7 @@ export default function Dashboard({ fixture }: { fixture?: PlannerSnapshot }) {
   const grades = snapshot?.grades ?? [];
   const meetings = useMemo(() => snapshot?.meetings ?? [], [snapshot]);
   const moduleItems = snapshot?.moduleItems ?? [];
-  const courseOf = useMemo(() => new Map(courses.map((c) => [c.id, c])), [courses]);
+  const courseOf = useMemo(() => new Map<string | null, Course>(courses.map((c) => [c.id, c])), [courses]);
 
   const open = deadlines.filter((d) => d.status === "open");
   const dated = open.filter((d) => d.due_at);
@@ -242,7 +244,14 @@ export default function Dashboard({ fixture }: { fixture?: PlannerSnapshot }) {
             </section>
 
             <section className="panel rise" style={{ ["--i" as string]: 4 }}>
-              <PanelHead title="Queue" count={`${rest.length} of ${queue.length}`} />
+              <PanelHead
+                title="Queue"
+                count={
+                  <button className="btn btn-ghost" style={{ padding: "4px 9px" }} onClick={() => setAddOpen(true)}>
+                    + Task
+                  </button>
+                }
+              />
               {rest.length ? (
                 <div className="tasks">
                   {rest.map((d, i) => (
@@ -401,6 +410,8 @@ export default function Dashboard({ fixture }: { fixture?: PlannerSnapshot }) {
           </aside>
         </div>
       )}
+
+      <TaskDialog open={addOpen} courses={courses} onClose={() => setAddOpen(false)} onSaved={refresh} />
 
       <DeadlineDialog
         deadline={selected}

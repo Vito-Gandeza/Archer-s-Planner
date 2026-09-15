@@ -122,16 +122,38 @@ export async function POST(request: Request) {
     }
     const buf = Buffer.from(await res.arrayBuffer());
     if (buf.byteLength > MAX_BYTES) return NextResponse.json({ error: "file is larger than 8 MB" }, { status: 413 });
+
+    // Canvas answers an unauthenticated download with its login page and a 200,
+    // so the status code proves nothing — the bytes have to be checked. DLSU
+    // does not put a `verifier` in file URLs, which is what would otherwise let
+    // a server fetch one, so this is expected rather than exceptional.
+    const head = buf.subarray(0, 512).toString("latin1").trimStart().toLowerCase();
+    if (head.startsWith("<!doctype html") || head.startsWith("<html")) {
+      return NextResponse.json(
+        {
+          error:
+            "Canvas sent its login page instead of the file. DLSU's file links have no access token in them, so the " +
+            "server cannot download your files — use “Or upload one from your computer” just below instead.",
+        },
+        { status: 409 },
+      );
+    }
+
     bytes = buf;
     label = file.filename;
-    isPdf = (file.content_type ?? "").includes("pdf") || /\.pdf$/i.test(file.filename) || buf.subarray(0, 4).toString() === "%PDF";
+    // Trust the bytes over the filename: a .pdf that is not a PDF must not be
+    // sent to the model labelled as one.
+    isPdf = buf.subarray(0, 5).toString("latin1") === "%PDF-";
+    if (!isPdf && ((file.content_type ?? "").includes("pdf") || /\.pdf$/i.test(file.filename))) {
+      return NextResponse.json({ error: `${file.filename} did not download as a real PDF — upload it manually instead.` }, { status: 409 });
+    }
   } else {
     const { data: blob, error } = await sb.storage.from("course-files").download(storagePath!);
     if (error || !blob) return NextResponse.json({ error: error?.message ?? "file not found" }, { status: 404 });
     if (blob.size > MAX_BYTES) return NextResponse.json({ error: "file is larger than 8 MB" }, { status: 413 });
     bytes = Buffer.from(await blob.arrayBuffer());
-    label = storagePath!;
-    isPdf = blob.type === "application/pdf" || storagePath!.toLowerCase().endsWith(".pdf");
+    label = storagePath!.split("/").pop() ?? storagePath!;
+    isPdf = bytes.subarray(0, 5).toString("latin1") === "%PDF-";
   }
 
   const parts = isPdf

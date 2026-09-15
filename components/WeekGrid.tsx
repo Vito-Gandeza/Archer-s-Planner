@@ -64,7 +64,7 @@ export default function WeekGrid({ weekStart, days, courses, deadlines, files, m
   // than off a duration — but never so tall it swallows the hour after it.
   const deadlinePx = clamp(50, hourPx * 1.35, 92);
   const bodyHeight = (hi - lo) * hourPx;
-  const courseOf = new Map(courses.map((c) => [c.id, c]));
+  const courseOf = new Map<string | null, Course>(courses.map((c) => [c.id, c]));
   const fileCount = new Map<string, number>();
   for (const f of files) if (f.deadline_id) fileCount.set(f.deadline_id, (fileCount.get(f.deadline_id) ?? 0) + 1);
 

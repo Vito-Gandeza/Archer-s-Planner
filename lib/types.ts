@@ -15,14 +15,18 @@ export type DeadlineStatus = "open" | "submitted" | "graded" | "dismissed";
 
 export type Deadline = {
   id: string;
-  course_id: string;
-  canvas_assignment_id: string;
+  /** null for a manual task that belongs to no particular course. */
+  course_id: string | null;
+  /** null for a manual task — it has no Canvas counterpart. */
+  canvas_assignment_id: string | null;
   title: string;
   due_at: string | null;
   type: DeadlineType;
   points_possible: number | null;
   canvas_url: string | null;
   status: DeadlineStatus;
+  source: "canvas" | "manual";
+  notes: string | null;
 };
 
 export type CourseFile = {

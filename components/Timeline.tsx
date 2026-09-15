@@ -3,10 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import { Masthead, PanelHead } from "./Chrome";
 import WeekGrid from "./WeekGrid";
+import MonthGrid from "./MonthGrid";
+import TaskDialog from "./TaskDialog";
 import DeadlineDialog from "./DeadlineDialog";
 import { useSnapshot } from "@/lib/useSnapshot";
 import { weekStart, deadlineState, pointsAtStake, dayLoadMinutes, timeUntil, DAY_MS } from "@/lib/planner.mjs";
-import type { Deadline, PlannerSnapshot } from "@/lib/types";
+import type { Course, Deadline, PlannerSnapshot } from "@/lib/types";
 
 /**
  * `fixture` is for the /preview design harness: the real timeline against
@@ -18,6 +20,9 @@ export default function Timeline({ fixture }: { fixture?: PlannerSnapshot }) {
   const stale = fixture ? false : live.stale;
   const refresh = fixture ? () => {} : live.refresh;
   const [offset, setOffset] = useState(0);
+  const [view, setView] = useState<"month" | "week">("month");
+  const [adding, setAdding] = useState<Date | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
   // A seven-day grid is unreadable on a phone, so the default follows the
   // screen: three days on a handset, five on a tablet, the full week on desktop.
   const [days, setDays] = useState(7);
@@ -41,11 +46,25 @@ export default function Timeline({ fixture }: { fixture?: PlannerSnapshot }) {
     return s;
   }, [now, offset]);
 
+  // In month view the same offset counts months instead of weeks.
+  const month = useMemo(() => new Date(now.getFullYear(), now.getMonth() + offset, 1), [now, offset]);
+
   const courses = snapshot?.courses ?? [];
   const deadlines = snapshot?.deadlines ?? [];
   const files = snapshot?.files ?? [];
   const meetings = snapshot?.meetings ?? [];
-  const courseOf = useMemo(() => new Map(courses.map((c) => [c.id, c])), [courses]);
+  const courseOf = useMemo(() => new Map<string | null, Course>(courses.map((c) => [c.id, c])), [courses]);
+
+  const monthDeadlines = useMemo(
+    () =>
+      deadlines.filter((d) => {
+        if (!d.due_at) return false;
+        const t = new Date(d.due_at);
+        return t.getFullYear() === month.getFullYear() && t.getMonth() === month.getMonth();
+      }),
+    [deadlines, month],
+  );
+
 
   const end = new Date(start.getTime() + days * DAY_MS);
   const inWeek = deadlines.filter((d) => {
@@ -88,7 +107,8 @@ export default function Timeline({ fixture }: { fixture?: PlannerSnapshot }) {
     <div className="shell">
       <Masthead title="Timeline" onSynced={refresh}>
         <p className="dek">
-          {inWeek.length} deadline{inWeek.length === 1 ? "" : "s"} · {meetings.length} weekly class
+          {view === "month" ? monthDeadlines.length : inWeek.length} deadline
+          {(view === "month" ? monthDeadlines.length : inWeek.length) === 1 ? "" : "s"} · {meetings.length} weekly class
           {meetings.length === 1 ? "" : "es"}
           {dueToday.length > 0 && (
             <>
@@ -101,18 +121,43 @@ export default function Timeline({ fixture }: { fixture?: PlannerSnapshot }) {
       </Masthead>
 
       <div className="weekbar">
-        <div className="range">{rangeLabel}</div>
+        <div className="range">
+          {view === "month"
+            ? month.toLocaleDateString(undefined, { month: "long", year: "numeric" })
+            : rangeLabel}
+        </div>
         <div className="nav">
           <button onClick={() => setOffset((o) => o - 1)} aria-label="Previous week">
             ←
           </button>
           <button onClick={() => setOffset(0)} data-active={offset === 0}>
-            This week
+            {view === "month" ? "This month" : "This week"}
           </button>
           <button onClick={() => setOffset((o) => o + 1)} aria-label="Next week">
             →
           </button>
-          <button onClick={() => setDays((d) => (d === 7 ? 3 : d === 3 ? 5 : 7))}>{days} days</button>
+          {view === "week" && (
+            <button onClick={() => setDays((d) => (d === 7 ? 3 : d === 3 ? 5 : 7))}>{days} days</button>
+          )}
+          <button
+            onClick={() => {
+              setView((v) => (v === "month" ? "week" : "month"));
+              setOffset(0);
+            }}
+            data-active={view === "month"}
+          >
+            {view === "month" ? "Month" : "Week"}
+          </button>
+          <button
+            className="btn"
+            data-primary="true"
+            onClick={() => {
+              setAdding(null);
+              setAddOpen(true);
+            }}
+          >
+            + Task
+          </button>
         </div>
         <div className="legend">
           <span>
@@ -139,6 +184,19 @@ export default function Timeline({ fixture }: { fixture?: PlannerSnapshot }) {
           Nothing to show yet
           <small>Set up the extension from Settings, or add your class schedule.</small>
         </div>
+      ) : view === "month" ? (
+        <MonthGrid
+          month={month}
+          courses={courses}
+          deadlines={deadlines}
+          meetings={meetings}
+          now={now}
+          onSelect={setSelected}
+          onAddOn={(day) => {
+            setAdding(day);
+            setAddOpen(true);
+          }}
+        />
       ) : (
         <WeekGrid
           weekStart={start}
@@ -152,16 +210,17 @@ export default function Timeline({ fixture }: { fixture?: PlannerSnapshot }) {
         />
       )}
 
-      {(inWeek.length > 0 || meetings.length > 0) && (
+      {(inWeek.length > 0 || monthDeadlines.length > 0 || meetings.length > 0) && (
         <section className="panel rise" style={{ marginTop: 30, ["--i" as string]: 1 }}>
-          <PanelHead title="Week at a glance" count={rangeLabel} />
+          <PanelHead title={view === "month" ? "Month at a glance" : "Week at a glance"} count={view === "month" ? `${monthDeadlines.length} deadlines` : rangeLabel} />
 
           <div className="stats" style={{ borderBottom: "1px solid var(--rule)" }}>
             <div className="stat-cell">
               <div className="k">Points at stake</div>
-              <div className="v">{Math.round(pointsAtStake(inWeek) as number)}</div>
+              <div className="v">{Math.round(pointsAtStake(view === "month" ? monthDeadlines : inWeek) as number)}</div>
               <div className="sub">
-                across {inWeek.length} deadline{inWeek.length === 1 ? "" : "s"}
+                across {(view === "month" ? monthDeadlines : inWeek).length} deadline
+                {(view === "month" ? monthDeadlines : inWeek).length === 1 ? "" : "s"}
               </div>
             </div>
             <div className="stat-cell">
@@ -209,6 +268,14 @@ export default function Timeline({ fixture }: { fixture?: PlannerSnapshot }) {
           </div>
         </section>
       )}
+
+      <TaskDialog
+        open={addOpen}
+        courses={courses}
+        defaultDay={adding}
+        onClose={() => setAddOpen(false)}
+        onSaved={refresh}
+      />
 
       <DeadlineDialog
         deadline={selected}
