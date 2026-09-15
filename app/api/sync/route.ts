@@ -5,7 +5,7 @@ import { shortCode } from "@/lib/planner.mjs";
 
 export const runtime = "nodejs";
 
-const LIMITS = { courses: 60, deadlines: 3000, files: 5000 };
+const LIMITS = { courses: 60, deadlines: 3000, files: 5000, modules: 2000, module_items: 8000 };
 const TYPES = new Set(["assignment", "quiz", "exam", "discussion", "other"]);
 const STATUSES = new Set(["open", "submitted", "graded", "dismissed"]);
 
@@ -99,13 +99,35 @@ export async function POST(request: Request) {
     }))
     .filter((f) => f.canvas_course_id && f.canvas_file_id);
 
+  const modules = asArray(body.modules, LIMITS.modules)
+    .map((m: any) => ({
+      canvas_course_id: str(m?.canvas_course_id, 64),
+      canvas_module_id: str(m?.canvas_module_id, 64),
+      name: str(m?.name, 300) ?? "Module",
+      position: num(m?.position),
+    }))
+    .filter((m) => m.canvas_course_id && m.canvas_module_id);
+
+  const module_items = asArray(body.module_items, LIMITS.module_items)
+    .map((i: any) => ({
+      canvas_course_id: str(i?.canvas_course_id, 64),
+      canvas_module_id: str(i?.canvas_module_id, 64),
+      canvas_item_id: str(i?.canvas_item_id, 64),
+      title: str(i?.title, 400) ?? "Item",
+      type: str(i?.type, 40) ?? "Page",
+      html_url: str(i?.html_url, 900),
+      canvas_file_id: str(i?.canvas_file_id, 64),
+      position: num(i?.position),
+    }))
+    .filter((i) => i.canvas_course_id && i.canvas_module_id && i.canvas_item_id);
+
   const sb = createClient(SUPABASE_URL, SUPABASE_PUBLISHABLE_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
   const { data, error } = await sb.rpc("ingest_sync", {
     p_token: bearer,
-    p_payload: { courses, deadlines, files },
+    p_payload: { courses, deadlines, files, modules, module_items },
   });
 
   if (error) {

@@ -4,9 +4,19 @@ import { hourRange, deadlineState, timeUntil, packDayWithClasses, formatTime, to
 import { Clock } from "./DeadlineDialog";
 import type { ClassMeeting, Course, CourseFile, Deadline } from "@/lib/types";
 
-const HOUR_PX = 64;
-const DEADLINE_MIN_PX = 92;
+/**
+ * The grid is sized to fit, not to a fixed scale. A week whose deadlines all
+ * land at 11:59pm spans 8am to midnight; at a fixed 64px an hour that is over
+ * 1000px of mostly empty hatching, which pushes everything under the grid off
+ * the screen. Total height is held near TARGET_BODY_PX instead, with a floor
+ * that keeps the hour labels legible.
+ */
+const TARGET_BODY_PX = 620;
+const MIN_HOUR_PX = 38;
+const MAX_HOUR_PX = 64;
 const BLOCK_MINUTES = 45;
+
+const clamp = (min: number, value: number, max: number) => Math.max(min, Math.min(value, max));
 
 function HourTick({ hour, top }: { hour: number; top: number }) {
   const h12 = hour % 12 === 0 ? 12 : hour % 12;
@@ -48,8 +58,12 @@ export default function WeekGrid({ weekStart, days, courses, deadlines, files, m
     return t >= weekStart.getTime() && t < end.getTime();
   });
 
-  const [lo, hi] = hourRange(inWeek, [8, 24], meetings) as [number, number];
-  const bodyHeight = (hi - lo) * HOUR_PX;
+  const [lo, hi] = hourRange(inWeek, undefined, meetings) as [number, number];
+  const hourPx = clamp(MIN_HOUR_PX, TARGET_BODY_PX / (hi - lo), MAX_HOUR_PX);
+  // A deadline is an instant, so its block is sized off the row height rather
+  // than off a duration — but never so tall it swallows the hour after it.
+  const deadlinePx = clamp(50, hourPx * 1.35, 92);
+  const bodyHeight = (hi - lo) * hourPx;
   const courseOf = new Map(courses.map((c) => [c.id, c]));
   const fileCount = new Map<string, number>();
   for (const f of files) if (f.deadline_id) fileCount.set(f.deadline_id, (fileCount.get(f.deadline_id) ?? 0) + 1);
@@ -70,12 +84,12 @@ export default function WeekGrid({ weekStart, days, courses, deadlines, files, m
 
   const nowTop =
     now.getHours() + now.getMinutes() / 60 >= lo && now.getHours() < hi
-      ? (now.getHours() + now.getMinutes() / 60 - lo) * HOUR_PX
+      ? (now.getHours() + now.getMinutes() / 60 - lo) * hourPx
       : null;
 
   return (
     <div className="scroller">
-      <div className="grid" style={{ ["--days" as string]: days, ["--hour" as string]: `${HOUR_PX}px` }}>
+      <div className="grid" style={{ ["--days" as string]: days, ["--hour" as string]: `${hourPx}px` }}>
         <div />
         {columns.map(({ dayDate }) => (
           <div className="dayhead" key={`h${dayDate.toISOString()}`} data-today={sameDay(dayDate, now)}>
@@ -89,7 +103,7 @@ export default function WeekGrid({ weekStart, days, courses, deadlines, files, m
 
         <div className="rail" style={{ height: bodyHeight }}>
           {ticks.map((h) => (
-            <HourTick key={h} hour={h} top={(h - lo) * HOUR_PX} />
+            <HourTick key={h} hour={h} top={(h - lo) * hourPx} />
           ))}
         </div>
 
@@ -105,13 +119,13 @@ export default function WeekGrid({ weekStart, days, courses, deadlines, files, m
 
             {packed.map((item, bi) => {
               const width = 100 / item.lanes;
-              const rawTop = (item.start - lo * 60) * (HOUR_PX / 60);
+              const rawTop = (item.start - lo * 60) * (hourPx / 60);
               // A class keeps its real duration; a deadline is an instant, so it
               // gets a fixed block tall enough to hold its own label.
               const height =
                 item.kind === "class"
-                  ? Math.max(38, (item.end - item.start) * (HOUR_PX / 60))
-                  : DEADLINE_MIN_PX;
+                  ? Math.max(34, (item.end - item.start) * (hourPx / 60))
+                  : deadlinePx;
               const top = Math.max(0, Math.min(rawTop, bodyHeight - height));
               const common = {
                 style: {
@@ -121,7 +135,8 @@ export default function WeekGrid({ weekStart, days, courses, deadlines, files, m
                   width: `calc(${width}% - ${item.lanes > 1 ? 2 : 0}px)`,
                 } as React.CSSProperties,
                 "data-narrow": item.lanes > 1,
-                "data-short": height < 64,
+                "data-short": height < 52,
+                "data-compact": height >= 52 && height < 78,
               };
 
               if (item.kind === "class" && item.meeting) {
@@ -189,7 +204,7 @@ export default function WeekGrid({ weekStart, days, courses, deadlines, files, m
 
         <div className="rail right" style={{ height: bodyHeight }}>
           {ticks.map((h) => (
-            <HourTick key={h} hour={h} top={(h - lo) * HOUR_PX} />
+            <HourTick key={h} hour={h} top={(h - lo) * hourPx} />
           ))}
         </div>
       </div>

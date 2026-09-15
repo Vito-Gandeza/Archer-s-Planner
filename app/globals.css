@@ -793,3 +793,9 @@ dialog::backdrop { background: rgb(from var(--paper) r g b / 0.72); }
 .course-row[data-hidden="true"] .nm { text-decoration: line-through; color: var(--muted); }
 .course-row[data-hidden="true"] { opacity: 0.6; }
 .course-row[data-hidden="true"]:hover { opacity: 1; }
+
+/* Middle density: keep the title, drop the footer line. */
+.block[data-compact="true"] { padding: 6px 8px 6px; gap: 1px; }
+.block[data-compact="true"] .foot { display: none; }
+.block[data-compact="true"] .title { -webkit-line-clamp: 1; }
+.block[data-compact="true"] .code { font-size: 13px; }
