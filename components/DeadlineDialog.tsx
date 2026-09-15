@@ -37,6 +37,11 @@ export default function DeadlineDialog({
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+
+  useEffect(() => {
+    if (!deadline) setConfirming(false);
+  }, [deadline]);
 
   useEffect(() => {
     if (deadline) ref.current?.showModal();
@@ -57,11 +62,26 @@ export default function DeadlineDialog({
     onClose();
   }
 
+  /**
+   * Only a task the student wrote can be deleted. A synced assignment would
+   * just reappear on the next sync, so "mark done" is the honest action there.
+   */
+  async function remove() {
+    if (!deadline) return;
+    setBusy(true);
+    await supabaseBrowser().from("deadlines").delete().eq("id", deadline.id);
+    setBusy(false);
+    onChanged();
+    onClose();
+  }
+
   return (
     <dialog ref={ref} onClose={onClose} onClick={(e) => e.target === ref.current && onClose()}>
       {deadline && (
         <div style={{ padding: 24 }}>
-          <div className="stat">{course?.name ?? "Course"}</div>
+          <div className="stat">
+            {deadline.source === "manual" ? "Your own task" : (course?.name ?? "Course")}
+          </div>
           <div
             style={{ fontSize: 34, fontWeight: 900, letterSpacing: "-0.04em", textTransform: "uppercase", lineHeight: 0.95, marginTop: 4 }}
           >
@@ -86,6 +106,7 @@ export default function DeadlineDialog({
             )}
             {deadline.points_possible != null && <> · {deadline.points_possible} pts</>}
           </p>
+          {deadline.notes && <p className="note" style={{ marginTop: 0 }}>{deadline.notes}</p>}
 
           {linkedItems.length > 0 && (
             <>
@@ -134,6 +155,16 @@ export default function DeadlineDialog({
             <button className="btn btn-ghost" onClick={onClose}>
               Close
             </button>
+            {deadline.source === "manual" &&
+              (confirming ? (
+                <button className="btn danger" onClick={remove} disabled={busy}>
+                  Delete for good
+                </button>
+              ) : (
+                <button className="btn btn-ghost" onClick={() => setConfirming(true)} title="Delete this task">
+                  Delete
+                </button>
+              ))}
           </div>
         </div>
       )}
