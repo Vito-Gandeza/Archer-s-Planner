@@ -7,3 +7,4 @@ next-env.d.ts
 extension.zip
 .claude
 .vercel
+package-lock.json
